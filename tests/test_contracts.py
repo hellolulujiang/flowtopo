@@ -60,6 +60,7 @@ def test_repeated_calls_agree_bit_for_bit(topo):
          topo.longest_upstream_path(ldn, ordering="dfs")),
         (topo.partition(4, "subbasin")[0], topo.partition(4, "subbasin")[0]),
     ]
+    assert len(pairs) == 4
     for first, second in pairs:
         assert np.array_equal(first, second)
 

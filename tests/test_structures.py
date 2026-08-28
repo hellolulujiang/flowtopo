@@ -145,9 +145,14 @@ def test_a_decomposition_covers_every_cell_once(topo, name, direction):
 def test_cells_inside_a_layer_are_in_ascending_order(topo, name):
     """A static loop schedule walks them this way, and the locality metrics
     are measured on that assumption."""
-    for members in topo.decomposition(name, "u2d"):
+    decomp = topo.decomposition(name, "u2d")
+    assert decomp.nlayers > 1
+    checked = 0
+    for members in decomp:
         if members.size > 1:
             assert np.all(np.diff(members) > 0)
+            checked += 1
+    assert checked > 0
 
 
 @pytest.mark.parametrize("name", LAYERINGS)
@@ -207,7 +212,9 @@ def test_an_ordering_filtered_to_a_subbasin_is_still_a_topological_sort(
 def test_a_layering_filtered_to_a_subbasin_keeps_its_layers_independent(
         topo, clipped, name):
     layers, _ = topo.layering(name)
-    for level in np.unique(layers[clipped]):
+    levels = np.unique(layers[clipped])
+    assert levels.size > 1
+    for level in levels:
         members = np.nonzero(clipped & (layers == level))[0]
         receivers = topo.idxs_ds[members]
         moving = (receivers >= 0) & (receivers != members)
@@ -217,13 +224,18 @@ def test_a_layering_filtered_to_a_subbasin_keeps_its_layers_independent(
 
 def test_the_conflict_free_guarantee_survives_clipping(topo, clipped):
     layers, _ = topo.layering("cfds")
-    for level in np.unique(layers[clipped]):
+    levels = np.unique(layers[clipped])
+    assert levels.size > 1
+    seen = 0
+    for level in levels:
         members = np.nonzero(clipped & (layers == level))[0]
         receivers = topo.idxs_ds[members]
         moving = (receivers >= 0) & (receivers != members)
         moving &= clipped[np.where(receivers >= 0, receivers, 0)]
         receivers = receivers[moving]
         assert receivers.size == np.unique(receivers).size
+        seen += receivers.size
+    assert seen > 0
 
 
 # ---------------------------------------------------------------------------

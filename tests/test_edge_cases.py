@@ -96,6 +96,8 @@ def test_lone_pit_is_one_cell_one_basin(lone_pit):
 
 def test_a_sequence_shorter_than_the_cell_count_means_a_cycle(cycle_beside_basin):
     topo = cycle_beside_basin
+    assert topo.ncells > 0
+    assert len(ORDERINGS) == 3
     for name in ORDERINGS:
         assert topo.ordering(name, "u2d").size < topo.ncells
 
@@ -128,6 +130,24 @@ def test_cfds_has_no_conflicts_even_with_a_cycle():
     grid[0, 1], grid[1, 0] = 4, 1        # two cells draining into it
     topo = build(grid)
     assert _conflicts(topo, "cfds") == 0
+
+
+@pytest.mark.parametrize("name", LAYERINGS)
+def test_no_layer_holds_a_cell_and_its_own_receiver(cycle_beside_basin, name):
+    """The property that makes a push over a layer safe.
+
+    No two cells in a layer share a receiver, and no cell's receiver sits in
+    the layer with it. The second half is the one a cycle can break: sweeping
+    the leftover cells into a final layer would put a whole ring in one layer,
+    where each cell reads a value another cell in the same layer is writing.
+    All three layerings leave those cells unnumbered instead.
+    """
+    topo = cycle_beside_basin
+    layers, _ = topo.layering(name)
+    for members in topo.decomposition(name, "u2d"):
+        ds = topo.idxs_ds[members]
+        keep = (ds >= 0) & (ds != members)
+        assert not np.any(layers[ds[keep]] == layers[members][keep])
 
 
 @pytest.mark.parametrize("n_parts", [1, 3, 64, 500])

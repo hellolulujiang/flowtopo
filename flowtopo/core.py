@@ -566,12 +566,13 @@ def _layering_cfds(idxs_ds, n_up_in, ncells):
     done = 0
     while done < ncells:
         if curr_sz == 0:
-            for idx in range(size):
-                if idxs_ds[idx] != MV and done_flg[idx] == 0:
-                    curr_q[curr_sz] = idx
-                    curr_sz += 1
-            if curr_sz == 0:
-                break
+            # The queue drained with cells still unscheduled. What is left sits
+            # in a cycle, or drains into one, and has no layer that satisfies
+            # its dependencies. Leave those at LAYER_NODATA, the same thing the
+            # other two layerings do. Sweeping them into one final layer would
+            # put a cell and its own receiver in the same layer and break the
+            # conflict-free promise this layering exists to keep.
+            break
 
         occ_sz = 0
         for k in range(curr_sz):
