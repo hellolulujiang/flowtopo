@@ -63,7 +63,9 @@ list, so it is the lightest of the three in memory.
 The same sequence as the serial breadth-first form, built by counting,
 prefix-summing and writing each frontier across threads.
 
-*Complexity:* O(N/P + L) time, O(N + E) space. Needs numba.
+*Complexity:* O(N/P + L) time over L frontiers, plus the prefix sum each
+frontier costs, which is a scan over the P thread totals. O(N + E) space.
+Needs numba.
 
 ## Layerings
 
@@ -126,8 +128,9 @@ each confluence. The tributary subtrees become items in the assignment; the
 mainstem depends on them and is held back to a second stage, marked
 `flowtopo.MAINSTEM`.
 
-*Complexity:* O(N + E + S log S) time, where S is the number of cells in a
-decomposed basin, O(N) space.
+*Complexity:* O(N + E + M log M) time, M being the number of items the
+assignment sorts: one per undecomposed basin plus one per tributary subtree
+split off a decomposed one. O(N) space.
 
 ## Kernels
 
@@ -138,8 +141,10 @@ decomposed basin, O(N) space.
 | `longest_upstream_path` | many-to-one maximum, linear | serial, pull, push, atomic_push |
 | `strahler_order` | many-to-one, non-linear | serial, pull, push |
 
-All four are one pass over a structure: O(N) time for the serial form, O(N/P +
-L) threaded over L layers, O(N) space beyond the structure itself.
+All four are one pass over a structure: O(N) time serial, O(N) space beyond
+the structure itself. Three of them also have a threaded form in
+`flowtopo.parallel`, O(N/P + L) over L layers. Strahler order has none, since
+its confluence rule is a comparison rather than an addition.
 
 `push` writes into the receiver and is correct only where no two cells of a
 layer share one, that is, under the conflict-free downstream layering.
