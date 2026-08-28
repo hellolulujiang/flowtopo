@@ -281,9 +281,11 @@ clone verifies itself:
 pytest
 ```
 
-54 tests: every ordering, layering, partition, kernel and manner is
-cross-checked on the example basin, including the write-conflict counts, plus
-degenerate inputs — an empty grid, a lone cell, and networks with cycles. The
+75 tests: every ordering, layering, partition, kernel and manner is
+cross-checked on the example basin, including the write-conflict counts;
+degenerate inputs — an empty grid, a lone cell, networks with cycles; and the
+API's contracts — cached arrays are read-only, repeated calls agree bit for
+bit, and accumulation keeps the precision it was given. The
 same tests, and `example.py` end to end, run on Python 3.10, 3.11 and 3.12 on
 every push; the badge at the top links to those runs.
 

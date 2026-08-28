@@ -12,6 +12,18 @@ from . import core, geodist, kernels, locality, partition as _partition
 from .layering import Decomposition, reverse_layers
 from .raster import GridHeader, read_geotiff
 
+def _frozen(array):
+    """Mark a cached array read-only.
+
+    These arrays are handed out on every call and kept inside the object. If a
+    caller wrote to one, every later call would return the damaged array with
+    no sign that anything had happened. Writing now raises instead; take a
+    ``.copy()`` if you need to modify one.
+    """
+    array.flags.writeable = False
+    return array
+
+
 ORDERINGS = ("dfs", "bfs", "topo")
 LAYERINGS = ("asap", "cfds", "alap")
 
@@ -40,14 +52,14 @@ class FlowTopo:
     """
 
     def __init__(self, idxs_ds, shape, transform=None, latlon=True, mask=None):
-        self.idxs_ds = np.ascontiguousarray(idxs_ds, dtype=np.int32)
+        self.idxs_ds = _frozen(np.ascontiguousarray(idxs_ds, dtype=np.int32))
         self.shape = tuple(int(v) for v in shape)
         self.nrow, self.ncol = self.shape
         if self.idxs_ds.size != self.nrow * self.ncol:
             raise ValueError("idxs_ds does not match shape")
         self.transform = tuple(transform) if transform is not None else None
         self.latlon = bool(latlon)
-        self.mask = (
+        self.mask = _frozen(
             np.ascontiguousarray(mask, dtype=bool)
             if mask is not None
             else self.idxs_ds >= 0
@@ -95,9 +107,9 @@ class FlowTopo:
     def pixel_length(self):
         """Centre-to-centre distance from each cell to its receiver, in metres."""
         if "plen" not in self._cache:
-            self._cache["plen"] = geodist.pixel_length(
+            self._cache["plen"] = _frozen(geodist.pixel_length(
                 self.idxs_ds, self.ncol, self._require_transform(), self.latlon
-            )
+            ))
         return self._cache["plen"]
 
     @property
@@ -107,7 +119,7 @@ class FlowTopo:
             area = geodist.pixel_area_km2(self.nrow, self.ncol,
                                           self._require_transform())
             area[~self.mask] = 0.0
-            self._cache["area"] = area
+            self._cache["area"] = _frozen(area)
         return self._cache["area"]
 
     @property
@@ -115,7 +127,7 @@ class FlowTopo:
         """One-based basin id per cell, ``0`` outside the network."""
         if "basins" not in self._cache:
             labels, count = core.basin_labels(self.idxs_ds, self.ordering("dfs"))
-            self._cache["basins"] = labels
+            self._cache["basins"] = _frozen(labels)
             self._cache["nbasins"] = count
         return self._cache["basins"]
 
@@ -153,7 +165,7 @@ class FlowTopo:
             else:
                 seq = core.seq_topo_from_source(self.idxs_ds)
                 native = "u2d"
-            self._cache[key] = (seq, native)
+            self._cache[key] = (_frozen(seq), native)
 
         seq, native = self._cache[key]
         return seq if direction == native else seq[::-1]
@@ -179,7 +191,7 @@ class FlowTopo:
                 layers, nlayers = core.layering_alap(self.idxs_ds, self.basins)
             layers = layers.copy()
             layers[~self.mask] = core.LAYER_NODATA
-            self._cache[key] = (layers, nlayers)
+            self._cache[key] = (_frozen(layers), nlayers)
         return self._cache[key]
 
     def decomposition(self, name="cfds", direction="u2d"):

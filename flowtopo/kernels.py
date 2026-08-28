@@ -84,8 +84,12 @@ def upstream_area(idxs_ds, cell_area, *, seq_u2d=None, decomp=None,
     Parameters
     ----------
     idxs_ds : ndarray of int32
-    cell_area : ndarray of float32
-        Per-cell area; the accumulator starts from this.
+    cell_area : ndarray
+        Per-cell area; the accumulator starts from this, and keeps its
+        precision. Pass a float64 array on a large network: accumulating in
+        float32 stops resolving one 90 m cell (about 0.007 km2) once the
+        running total passes roughly 1e5 km2, so a continental basin loses the
+        contribution of individual cells near its outlet.
     seq_u2d : ndarray, optional
         Upstream-to-downstream ordering, required for ``manner="serial"``.
     decomp : Decomposition, optional
@@ -97,11 +101,14 @@ def upstream_area(idxs_ds, cell_area, *, seq_u2d=None, decomp=None,
 
     Returns
     -------
-    upa : ndarray of float32
+    upa : ndarray, in the dtype of ``cell_area``
     """
     _check_manner(manner, MANNERS)
     idxs_ds = np.ascontiguousarray(idxs_ds, dtype=np.int32)
-    upa = np.ascontiguousarray(cell_area, dtype=np.float32).copy()
+    dtype = np.float64 if np.asarray(cell_area).dtype == np.float64 else np.float32
+    upa = np.ascontiguousarray(cell_area, dtype=dtype).copy()
+    nodata = dtype(nodata)
+    zero = dtype(0.0)
     if mask is not None:
         upa[~np.asarray(mask, dtype=bool)] = nodata
 
@@ -109,7 +116,7 @@ def upstream_area(idxs_ds, cell_area, *, seq_u2d=None, decomp=None,
         if seq_u2d is None:
             raise ValueError("manner='serial' needs seq_u2d")
         _upa_serial(idxs_ds, np.ascontiguousarray(seq_u2d, dtype=np.int32),
-                    upa, np.float32(nodata))
+                    upa, nodata)
         return upa
 
     if decomp is None:
@@ -129,7 +136,7 @@ def upstream_area(idxs_ds, cell_area, *, seq_u2d=None, decomp=None,
                 if not has.any():
                     continue
                 val = upa[np.where(has, u, 0)]
-                total += np.where(has & (val != nodata), val, np.float32(0.0))
+                total += np.where(has & (val != nodata), val, zero)
             upa[idx] = np.where(alive, total, cur)
         return upa
 

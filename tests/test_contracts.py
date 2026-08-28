@@ -1,0 +1,96 @@
+"""The promises the API makes to a caller.
+
+Cached arrays are handed out on every call, so writing to one would corrupt
+every later call. Results must not depend on how many times something is asked
+for, and an accumulator must keep the precision it was given.
+"""
+
+import numpy as np
+import pytest
+
+import flowtopo
+from flowtopo.synthetic import synthetic_d8
+
+TRANSFORM = (0.0, 1 / 1200, 0.0, 35.0, 0.0, -1 / 1200)
+
+
+@pytest.fixture(scope="module")
+def topo():
+    return flowtopo.FlowTopo.from_d8(synthetic_d8(150, seed=3),
+                                     transform=TRANSFORM)
+
+
+# ---------------------------------------------------------------------------
+# Cached arrays cannot be written through
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize("attribute", ["idxs_ds", "mask", "basins",
+                                       "cell_area", "pixel_length"])
+def test_cached_attributes_are_read_only(topo, attribute):
+    with pytest.raises(ValueError):
+        getattr(topo, attribute)[0] = 0
+
+
+@pytest.mark.parametrize("name", ["dfs", "bfs", "topo"])
+@pytest.mark.parametrize("direction", ["d2u", "u2d"])
+def test_orderings_are_read_only(topo, name, direction):
+    with pytest.raises(ValueError):
+        topo.ordering(name, direction)[0] = 0
+
+
+@pytest.mark.parametrize("name", ["asap", "cfds", "alap"])
+def test_layerings_are_read_only(topo, name):
+    with pytest.raises(ValueError):
+        topo.layering(name)[0][0] = 0
+
+
+# ---------------------------------------------------------------------------
+# Results do not drift between calls
+# ---------------------------------------------------------------------------
+
+
+def test_repeated_calls_agree_bit_for_bit(topo):
+    ldn = topo.distance_to_outlet(ordering="dfs")
+    pairs = [
+        (topo.upstream_area(ordering="dfs"), topo.upstream_area(ordering="dfs")),
+        (topo.upstream_area(layering="cfds", manner="push"),
+         topo.upstream_area(layering="cfds", manner="push")),
+        (topo.longest_upstream_path(ldn, ordering="dfs"),
+         topo.longest_upstream_path(ldn, ordering="dfs")),
+        (topo.partition(4, "subbasin")[0], topo.partition(4, "subbasin")[0]),
+    ]
+    for first, second in pairs:
+        assert np.array_equal(first, second)
+
+
+def test_a_kernel_does_not_touch_what_it_was_given(topo):
+    ldn = topo.distance_to_outlet(ordering="dfs")
+    before = ldn.copy()
+    topo.longest_upstream_path(ldn, ordering="dfs")
+    topo.longest_upstream_path(ldn, layering="cfds", manner="push")
+    assert np.array_equal(ldn, before)
+
+
+# ---------------------------------------------------------------------------
+# Accumulation keeps the precision it was handed
+# ---------------------------------------------------------------------------
+
+
+def test_upstream_area_follows_the_dtype_of_cell_area(topo):
+    assert topo.upstream_area(ordering="dfs").dtype == np.float32
+    wide = np.asarray(topo.cell_area, dtype=np.float64)
+    assert topo.upstream_area(ordering="dfs", cell_area=wide).dtype == np.float64
+
+
+@pytest.mark.parametrize("kwargs", [
+    {"layering": "cfds", "manner": "push"},
+    {"layering": "alap", "manner": "pull"},
+    {"layering": "asap", "manner": "atomic_push"},
+    {"ordering": "topo"},
+])
+def test_float64_accumulation_agrees_far_more_closely(topo, kwargs):
+    wide = np.asarray(topo.cell_area, dtype=np.float64)
+    reference = topo.upstream_area(ordering="dfs", cell_area=wide)
+    got = topo.upstream_area(cell_area=wide, **kwargs)
+    assert np.allclose(got[topo.mask], reference[topo.mask], rtol=1e-9, atol=1e-9)

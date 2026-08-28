@@ -161,6 +161,20 @@ confluence rule is *two branches of equal order raise the order by one*, which
 is a comparison and a count, not an addition. No atomic implements that, so
 under a layering the only safe push is the conflict-free one.
 
+### Precision on a large network
+
+Drainage area accumulates in the precision of the array you give it, float32 by
+default. float32 stops resolving one 90 m cell, about 0.007 km², once the
+running total passes roughly 1e5 km², so on a continental basin the cells
+nearest the outlet stop contributing. Hand it a float64 array when that
+matters:
+
+```python
+import numpy as np
+upa = topo.upstream_area(ordering="dfs",
+                         cell_area=np.asarray(topo.cell_area, dtype=np.float64))
+```
+
 ## Splitting across processors
 
 A layering spreads a layer across threads that share memory. Running on several
