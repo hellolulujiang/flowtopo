@@ -32,6 +32,9 @@ it.
 
 ## Five minutes
 
+`d8` is a flow-direction array and `transform` its six-element GeoTransform;
+the next section reads both from a GeoTIFF in one call.
+
 ```python
 import flowtopo
 

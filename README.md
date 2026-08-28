@@ -18,6 +18,9 @@ cells in drainage order:
   threads;
 * **two spatial partitions** — independent subregions, several processors.
 
+`topo` in the snippets that follow is a `FlowTopo`, built once from a
+flow-direction raster. [Quick start](#quick-start) shows how.
+
 Four kernels come with the package to exercise them: upstream drainage area,
 distance to outlet, longest upstream path, Strahler stream order. They are
 tests of the structures, not the point of the package: each runs on every
