@@ -16,8 +16,8 @@ correctness question rather than a style question:
 * ``pull`` gathers from the donors, so every thread writes only to its own
   cell.  Correct under any layering, at the cost of the adjacency table.
 
-Requires numba; without it these fall back to a plain serial loop and the
-``parallel`` claim no longer holds.
+Requires numba.  Without it these raise and point at :mod:`flowtopo.kernels`,
+rather than falling back to a serial loop while still being called parallel.
 """
 
 import numpy as np

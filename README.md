@@ -46,7 +46,10 @@ direction and reversed on demand, and the kernels do the reversing.
 
 The three differ in memory access pattern. Depth-first has the lowest simulated
 L1 miss rate on the example basin: 10.55%, against 21.83% (breadth-first) and
-37.02% (topological sort).
+37.02% (topological sort). Those are one alignment of the two arrays the
+traversal reads, the one where they collide in every cache set. Shift them
+apart and the numbers fall to about 8.8%, 14.2% and 36.9%. The order does not
+move, at any alignment tried.
 
 **Direction.** An ordering is built in one direction and reversed on demand.
 Depth-first and breadth-first start at the pit, so they come out downstream to

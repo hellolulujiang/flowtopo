@@ -99,6 +99,9 @@ anyone to take a statement on trust.
 | Documentation | The parallel timing table was one stale run | Its pull row sat outside the spread of three fresh runs on the same machine |
 | Geodesy | `pixel_area_km2` read the pixel width and used it for the height too | Cell area was out by the aspect ratio on any grid without square pixels: half on a 0.5 x 1 degree grid, double on 1 x 0.5. MERIT Hydro is square, so nothing released moves |
 | Licence | The MIT grant named src/ and tools/, neither of which exists here | Carried over from the C package, so the grant named nothing in this repository |
+| Documentation | Longest upstream path was listed as not agreeing bit for bit across manners | It agrees exactly: its confluence rule takes the larger of two donors, so there is no summation order to differ. Only drainage area moves |
+| Documentation | `flowtopo.parallel` was documented as falling back to a serial loop without numba | It raises. Two other places already said so |
+| Cache model | The offset between the two simulated arrays is a whole number of L1 and L2 sets | Cell i of each array always lands in the same set, the worst case for conflict misses. Depth-first reads 10.5% there and 8.8% at other alignments, breadth-first 21.8% against 14.2%. Their order is stable at every alignment tried, so the conclusion holds and the digits were being read too closely |
 
 ## A third pass: prose, layout and coverage
 

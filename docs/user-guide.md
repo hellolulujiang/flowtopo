@@ -96,6 +96,8 @@ All three give a correct answer. They differ in how the memory is walked:
 * **`dfs`** finishes one tributary subtree before starting the next, so a
   cell's receiver is only a few positions back. Lowest simulated cache miss
   rate of the three; on the bundled basin, 10.55% L1 against 21.83% and 37.02%.
+  Those figures shift by a few points with how the two arrays happen to be
+  aligned in memory, but their order does not.
   This is the one to reach for when the kernel will run repeatedly.
 * **`bfs`** groups cells by hop count from the pit.
 * **`topo`** needs only donor counts, never a donor list, so it allocates least.

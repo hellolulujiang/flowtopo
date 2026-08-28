@@ -27,7 +27,16 @@ CACHE_LEVELS = {
     "L3": (585728, 11),
 }
 
-_ARRAY_OFFSET = 1 << 40  # keep the two arrays out of each other's tags
+# Where the receiver array sits relative to the cell array. Any large offset
+# keeps their tags apart, which is all the simulation needs to tell the two
+# streams apart. This particular value is a whole number of L1 and L2 sets, so
+# cell i of one array and cell i of the other always land in the same set:
+# the worst case for conflict misses, and a real program's allocator gives an
+# arbitrary alignment instead. It moves the absolute miss rates by a few
+# points on the example basin (depth-first 8.8% to 10.5%, breadth-first 14.2%
+# to 21.8%, topological 36.9% to 37.0%) and does not change their order, which
+# holds at every offset tried.
+_ARRAY_OFFSET = 1 << 40
 
 
 @njit(cache=True)
