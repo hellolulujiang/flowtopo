@@ -259,7 +259,7 @@ The structures for the whole 90 m network are on Zenodo, one tile per
 hydrological region, ready to read. To compute anything on them you also need
 the flow-direction grid they are indexed against, and that is **not
 redistributed here**: get it from its authors at
-<http://hydro.iis.u-tokyo.ac.jp/~yamadai/MERIT_Hydro/>, under the CC BY-NC 4.0
+<https://global-hydrodynamics.github.io/MERIT_Hydro/>, under the CC BY-NC 4.0
 terms they set.
 
 Working out which of their files a region needs is the fiddly part, and
