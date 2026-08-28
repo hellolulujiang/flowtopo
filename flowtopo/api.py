@@ -133,11 +133,13 @@ class FlowTopo:
 
     @property
     def nbasins(self):
+        """Number of basins, that is, of cells that drain to themselves."""
         self.basins
         return self._cache["nbasins"]
 
     @property
     def ncells(self):
+        """Number of valid cells, those inside the network."""
         return int(np.count_nonzero(self.mask))
 
     # -- orderings ---------------------------------------------------------

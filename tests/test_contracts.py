@@ -94,3 +94,32 @@ def test_float64_accumulation_agrees_far_more_closely(topo, kwargs):
     reference = topo.upstream_area(ordering="dfs", cell_area=wide)
     got = topo.upstream_area(cell_area=wide, **kwargs)
     assert np.allclose(got[topo.mask], reference[topo.mask], rtol=1e-9, atol=1e-9)
+
+
+# ---------------------------------------------------------------------------
+# The threaded push is reproducible, which is the reason to prefer it
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.skipif(not flowtopo.HAS_NUMBA, reason="threading needs numba")
+def test_conflict_free_push_gives_the_same_answer_at_any_thread_count(topo):
+    """No two cells in a layer share a receiver, so the sum order is fixed."""
+    import numba
+
+    from flowtopo import parallel
+
+    before = numba.get_num_threads()
+    try:
+        results = []
+        for threads in (1, 2, 4):
+            numba.set_num_threads(threads)
+            results.append(parallel.upstream_area(topo, "cfds", "push").copy())
+    finally:
+        numba.set_num_threads(before)
+
+    for other in results[1:]:
+        assert np.array_equal(results[0], other)
+
+    serial = topo.upstream_area(ordering="dfs")
+    assert np.allclose(results[0][topo.mask], serial[topo.mask],
+                       rtol=1e-4, atol=1e-2)

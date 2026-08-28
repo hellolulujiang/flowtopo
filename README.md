@@ -132,7 +132,10 @@ order has no atomic form, because its confluence rule is a comparison rather
 than an addition, so its only parallel push is under the conflict-free
 layering.
 
-If `manner` is not given, FlowTopo picks a safe one for the layering.
+Because no two cells in a layer share a receiver, the sums always happen in the
+same order: the conflict-free push returns bit-identical results at any thread
+count, which an atomic push cannot promise. If `manner` is not given, FlowTopo
+picks a safe one for the layering.
 
 ## Which structure to use
 
@@ -281,7 +284,7 @@ clone verifies itself:
 pytest
 ```
 
-75 tests: every ordering, layering, partition, kernel and manner is
+76 tests: every ordering, layering, partition, kernel and manner is
 cross-checked on the example basin, including the write-conflict counts;
 degenerate inputs — an empty grid, a lone cell, networks with cycles; and the
 API's contracts — cached arrays are read-only, repeated calls agree bit for
