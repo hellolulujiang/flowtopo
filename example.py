@@ -3,7 +3,8 @@
 The Python counterpart of ``flowtopo_example`` in the C package.  It
 
 1. reads the D8 grid;
-2. builds the three serial orderings and the three parallel layerings;
+2. builds the three serial orderings, the three parallel layerings and the
+   two spatial partitions;
 3. counts, per layering, how many times a layer writes twice into one receiver;
 4. runs the four kernels under every manner and checks they agree;
 5. reports the memory-locality metrics;
@@ -74,8 +75,8 @@ def main():
     print(f"  basins          : {topo.nbasins}")
     print(f"  numba           : {'yes' if flowtopo.HAS_NUMBA else 'no (pure python, slow)'}")
 
-    # ---- Stage 1: the six structures ------------------------------------
-    banner("Stage 1  Building the six topological representations")
+    # ---- Stage 1: the eight structures ----------------------------------
+    banner("Stage 1  Building the eight reusable structures")
     for name in ORDERINGS:
         seconds, seq = timed(
             lambda n=name: topo.ordering(n, "u2d"), args.repeats
@@ -87,8 +88,38 @@ def main():
         )
         print(f"  {LAYER_LABEL[name]:9s} {nlayers:10,} layers  {seconds:8.4f} s")
 
-    # ---- Stage 2: write conflicts ---------------------------------------
-    banner("Stage 2  Write conflicts inside a layer")
+    # ---- Stage 2: spatial partitions -------------------------------------
+    banner("Stage 2  Spatial partitions")
+    print("  Whole basins cannot be split, so one large basin leaves the other")
+    print("  processors idle. Cutting an oversized basin along its mainstem")
+    print("  spreads it. Set n_parts to the number of processors.\n")
+    print(f"  {'level':10s} {'load per subregion':>34s} {'imbalance':>10s} {'mainstem':>9s}")
+    partitions = {}
+    for level in ("basin", "subbasin"):
+        part, load = topo.partition(n_parts=4, level=level)
+        partitions[level] = part
+        stem = int(np.count_nonzero(part == flowtopo.MAINSTEM))
+        spread = load.max() / load.mean() if load.mean() else float("nan")
+        shown = " ".join(f"{int(v):>7,}" for v in load)
+        print(f"  {level:10s} {shown:>34s} {spread:10.2f} {stem:9,}")
+
+    crossings = {}
+    for level, part in partitions.items():
+        cells = np.nonzero(part >= 0)[0]
+        ds = topo.idxs_ds[cells]
+        moving = (ds >= 0) & (ds != cells)
+        cells, ds = cells[moving], ds[moving]
+        crossings[level] = int(np.count_nonzero(
+            (part[ds] != part[cells]) & (part[ds] != flowtopo.MAINSTEM)))
+        covered = (part >= 0) | (part == flowtopo.MAINSTEM)
+        assert np.array_equal(covered, topo.mask), f"{level}: some cells unassigned"
+    print(f"\n  Values crossing a subregion boundary: "
+          f"basin {crossings['basin']}, subbasin {crossings['subbasin']}.")
+    print("  Zero either way: both cut along the drainage hierarchy, so the")
+    print("  subregions never have to talk to each other.")
+
+    # ---- Stage 3: write conflicts ---------------------------------------
+    banner("Stage 3  Write conflicts inside a layer")
     print("  A push writes into the receiver.  That is only safe if no two")
     print("  cells of a layer share one.  This counts how often they do.\n")
     print(f"  {'layering':10s} {'layers':>8s} {'conflicts':>12s} {'worst layer':>12s}")
@@ -100,8 +131,8 @@ def main():
     print("\n  Only the conflict-free downstream layering reaches zero, and it")
     print("  is the only one under which a plain push is safe.")
 
-    # ---- Stage 3: the four kernels --------------------------------------
-    banner("Stage 3  The four kernels under every manner")
+    # ---- Stage 4: the four kernels --------------------------------------
+    banner("Stage 4  The four kernels under every manner")
     ldn_ref = topo.distance_to_outlet(ordering="dfs")
     upa_ref = topo.upstream_area(ordering="dfs")
     lup_ref = topo.longest_upstream_path(ldn_ref, ordering="dfs")
@@ -198,8 +229,8 @@ def main():
             report(label, "Strahler stream order", manner, seconds, diff,
                    "cells", safe)
 
-    # ---- Stage 4: locality ----------------------------------------------
-    banner("Stage 4  Memory-locality metrics")
+    # ---- Stage 5: locality ----------------------------------------------
+    banner("Stage 5  Memory-locality metrics")
     print(f"  {'structure':10s} {'L1 miss':>10s} {'L2 miss':>10s} "
           f"{'L3 miss':>10s} {'row jump':>10s}")
     for name in ORDERINGS:
@@ -220,8 +251,8 @@ def main():
     print("  32 KB 8-way L1, 1 MB 16-way L2, 35.75 MB 11-way L3.  This basin")
     print("  fits inside L3, so the miss rates stay low.")
 
-    # ---- Stage 5: write --------------------------------------------------
-    banner("Stage 5  Writing outputs")
+    # ---- Stage 6: write --------------------------------------------------
+    banner("Stage 6  Writing outputs")
     os.makedirs(args.out, exist_ok=True)
 
     def dump(name, array, dtype, nodata):

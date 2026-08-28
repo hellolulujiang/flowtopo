@@ -2,7 +2,7 @@
 
 A D8 flow network can be traversed in more than one way, and the choice
 changes both how fast the traversal runs and whether a parallel form is
-correct at all.  This package builds six representations of the same network
+correct at all.  This package builds eight representations of the same network
 
 * three serial orderings: depth-first from the pits, breadth-first from the
   pits, and a topological sort from the sources;
@@ -11,7 +11,7 @@ correct at all.  This package builds six representations of the same network
 
 then runs four kernels over them -- upstream drainage area, distance to outlet,
 longest upstream path and Strahler stream order -- under every propagation
-manner each kernel supports, so the six can be compared on the same input.
+manner each kernel supports, so all of them can be compared on one input.
 
 The conflict-free downstream layering is the piece worth a second look: it
 guarantees that no two cells in one layer share a receiver.  A scatter over a

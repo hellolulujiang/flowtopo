@@ -1,7 +1,7 @@
 """The :class:`FlowTopo` front end.
 
-Wraps a D8 flow network and builds the six topological representations on
-demand, caching each one.  Every kernel then takes an ordering or a layering
+Wraps a D8 flow network and builds its reusable structures on demand,
+caching each one.  Every kernel then takes an ordering or a layering
 and a propagation manner, so the same network can be traversed six ways and
 the answers compared.
 """

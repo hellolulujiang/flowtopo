@@ -30,7 +30,7 @@ arguments, and accumulation keeps the dtype it was handed.
 
 Run `python example.py` and check it still ends in PASS, then run `pytest`.
 Do not regenerate `expected.npz` to make a failing test pass; a change that
-alters the six structures is a versioned change and needs review first.
+alters any of the structures is a versioned change and needs review first.
 
 ## Style
 

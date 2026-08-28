@@ -13,7 +13,7 @@ If you only want one drainage-area map on one grid, use the three lines under
 [Five minutes](#five-minutes) and stop there. The rest of this guide is for
 when the choice starts to matter: large grids, repeated kernels, or threads.
 
-A narrated video overview animates the six structures and the three propagation
+A narrated video overview animates the orderings, the layerings and the three propagation
 manners — worth ten minutes before reading further:
 <https://youtu.be/tE5K2wM3TTY>.
 

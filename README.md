@@ -197,7 +197,7 @@ upa = parallel.upstream_area(topo, layering="cfds", manner="push")
 Run everything on the example basin:
 
 ```sh
-python example.py       # all structures, kernels and manners; ends PASS or FAIL
+python example.py       # every structure, kernel and manner; ends PASS or FAIL
 python benchmark.py     # serial vs threaded at several grid sizes
 ```
 
