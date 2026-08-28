@@ -224,7 +224,10 @@ def test_partitioning_a_ring_terminates_and_assigns_everything(
     part, load = topo.partition(n_parts=2, level=level)
     assigned = part >= 0
     assert np.array_equal(assigned | (part == flowtopo.MAINSTEM), topo.mask)
-    assert load.sum() == np.count_nonzero(assigned)
+
+    # Every cell gets a subregion, and none of them counts as work: a ring
+    # reaches no pit, so no sequence visits it and no layer holds it.
+    assert load.sum() == 0
 
 
 @pytest.mark.parametrize("level", ["basin", "subbasin"])

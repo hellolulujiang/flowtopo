@@ -104,13 +104,17 @@ def partition(topo, n_parts=4, level="subbasin"):
         Subregion index per cell; ``-1`` outside the network, and ``-2``
         (:data:`MAINSTEM`) on a mainstem held back to the second stage.
     load : ndarray of float64
-        Cells assigned to each subregion, the mainstem cells excluded.
+        Work in each subregion, counted in cells.  Excludes the mainstem cells
+        and the cells caught in a cycle, neither of which a kernel processes
+        in this stage, so ``load.sum()`` is below the number of valid cells
+        whenever either is present.
 
     Notes
     -----
-    Cells caught in a cycle have no place in the drainage hierarchy. They are
-    assigned like any other cell, but a kernel cannot produce a meaningful
-    value for them in the first place.
+    Cells caught in a cycle have no place in the drainage hierarchy. They get
+    a subregion like any other cell, so that every cell has one, but they do
+    not count towards its load: a sequence skips them and a layering leaves
+    them unnumbered, so nothing is computed for them.
     """
     if level not in ("basin", "subbasin"):
         raise ValueError("level must be 'basin' or 'subbasin'")
@@ -132,10 +136,11 @@ def partition(topo, n_parts=4, level="subbasin"):
     labels = labels[labels != 0]
     sizes = counts[labels]
     if labels.size == 0:
+        # Every cell is label 0, so nothing reaches a pit. They all go to one
+        # subregion to keep the cover complete, and its load stays zero:
+        # there is no work here for any kernel to do.
         part[mask] = 0
-        load = np.zeros(n_parts, dtype=np.float64)
-        load[0] = float(mask.sum())
-        return part, load
+        return part, np.zeros(n_parts, dtype=np.float64)
 
     def by_whole_basin():
         """Assign each basin as one item, then look the answer up per cell."""
@@ -145,9 +150,11 @@ def partition(topo, n_parts=4, level="subbasin"):
         part[mask] = lookup[basins[mask]]
         stranded = mask & (part == -1)
         if stranded.any():
-            lightest = int(np.argmin(load))
-            part[stranded] = lightest
-            load[lightest] += int(stranded.sum())
+            # Cells that reach no pit. They need a subregion so that every
+            # cell has one, but no kernel will process them: a sequence skips
+            # them and a layering leaves them unnumbered. Keeping them out of
+            # load is what makes load the amount of work in a subregion.
+            part[stranded] = int(np.argmin(load))
         return part, load
 
     if level == "basin":
@@ -205,9 +212,9 @@ def partition(topo, n_parts=4, level="subbasin"):
     keep = mask & ~decomposed
     part[keep] = lookup[basins[keep]]
     # Cells that reach no pit carry label 0, which has no entry in the
-    # assignment; give them the lightest subregion rather than leaving them out.
+    # assignment; give them the lightest subregion rather than leaving them
+    # out. They do not count towards load, since no kernel processes them.
     stranded = mask & (part == -1)
     if stranded.any():
         part[stranded] = int(np.argmin(load))
-        load[int(np.argmin(load))] += int(stranded.sum())
     return part, load
