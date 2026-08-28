@@ -22,11 +22,12 @@ distance to outlet, longest upstream path, Strahler stream order. They are
 tests of the structures, not the point of the package: each runs on every
 structure and the results are cross-checked.
 
-A narrated video overview of the structures and the propagation manners:
-<https://youtu.be/tE5K2wM3TTY>. Every animation below is a preview; the
-**▶ HD video** under it opens the full-resolution version, which can be
-paused, scrubbed and viewed fullscreen (browser Back returns here). The files
-are archived in [`docs/media`](docs/media).
+A narrated video overview of the structures and the propagation manners is on
+YouTube: <https://youtu.be/tE5K2wM3TTY>, where it can be paused, scrubbed and
+watched fullscreen. Every animation below is a preview; the
+**full-resolution MP4** link under it is the same animation at 1240 x 620
+(the propagation ones at 836 x 934), about 2.2 times the preview on each
+side. All of them sit in [`docs/media`](docs/media).
 
 ## Serial orderings
 
@@ -35,9 +36,9 @@ the cells it depends on. One pass over the sequence computes any kernel.
 
 | topological sort from the sources<br>`ordering="topo"` | breadth-first from the pit<br>`ordering="bfs"` | depth-first from the pit<br>`ordering="dfs"` |
 | :---: | :---: | :---: |
-| [![](docs/media/seq_topo.gif)](https://github.com/user-attachments/assets/802b448c-46a1-4d7f-a1e3-c2cd1f1c9385) | [![](docs/media/seq_bfs.gif)](https://github.com/user-attachments/assets/5680a958-2d7e-4003-80af-0a1ac4ab769e) | [![](docs/media/seq_dfs.gif)](https://github.com/user-attachments/assets/0f48bc7a-98f2-4948-ae02-8769db772250) |
+| [![](docs/media/seq_topo.gif)](https://github.com/hellolulujiang/flowtopo/blob/main/docs/media/seq_topo.mp4) | [![](docs/media/seq_bfs.gif)](https://github.com/hellolulujiang/flowtopo/blob/main/docs/media/seq_bfs.mp4) | [![](docs/media/seq_dfs.gif)](https://github.com/hellolulujiang/flowtopo/blob/main/docs/media/seq_dfs.mp4) |
 | a cell is appended once all its donors are done | cells in order of hop count from the pit | one tributary subtree at a time |
-| [▶ HD video](https://github.com/user-attachments/assets/802b448c-46a1-4d7f-a1e3-c2cd1f1c9385) | [▶ HD video](https://github.com/user-attachments/assets/5680a958-2d7e-4003-80af-0a1ac4ab769e) | [▶ HD video](https://github.com/user-attachments/assets/0f48bc7a-98f2-4948-ae02-8769db772250) |
+| [full-resolution MP4](https://github.com/hellolulujiang/flowtopo/blob/main/docs/media/seq_topo.mp4) | [full-resolution MP4](https://github.com/hellolulujiang/flowtopo/blob/main/docs/media/seq_bfs.mp4) | [full-resolution MP4](https://github.com/hellolulujiang/flowtopo/blob/main/docs/media/seq_dfs.mp4) |
 
 The three differ in memory access pattern. Depth-first has the lowest simulated
 L1 miss rate on the example basin: 10.55%, against 21.83% (breadth-first) and
@@ -65,9 +66,9 @@ in parallel. Layer 0 holds the headwaters.
 
 | as soon as possible<br>`layering="asap"` | conflict-free downstream<br>`layering="cfds"` | as late as possible<br>`layering="alap"` |
 | :---: | :---: | :---: |
-| [![](docs/media/lyr_asap.gif)](https://github.com/user-attachments/assets/b204458c-1dbf-4cac-ac2b-a5bee193eb79) | [![](docs/media/lyr_cfds.gif)](https://github.com/user-attachments/assets/c7df9a2f-8ec4-475d-b9ed-c963ef762d54) | [![](docs/media/lyr_alap.gif)](https://github.com/user-attachments/assets/4407d9af-47e6-4fcc-b409-ea4bf850d3ff) |
+| [![](docs/media/lyr_asap.gif)](https://github.com/hellolulujiang/flowtopo/blob/main/docs/media/lyr_asap.mp4) | [![](docs/media/lyr_cfds.gif)](https://github.com/hellolulujiang/flowtopo/blob/main/docs/media/lyr_cfds.mp4) | [![](docs/media/lyr_alap.gif)](https://github.com/hellolulujiang/flowtopo/blob/main/docs/media/lyr_alap.mp4) |
 | every cell in the earliest layer its donors allow | as soon as possible, plus one rule: no two cells in a layer share a receiver | every cell in the latest layer possible |
-| [▶ HD video](https://github.com/user-attachments/assets/b204458c-1dbf-4cac-ac2b-a5bee193eb79) | [▶ HD video](https://github.com/user-attachments/assets/c7df9a2f-8ec4-475d-b9ed-c963ef762d54) | [▶ HD video](https://github.com/user-attachments/assets/4407d9af-47e6-4fcc-b409-ea4bf850d3ff) |
+| [full-resolution MP4](https://github.com/hellolulujiang/flowtopo/blob/main/docs/media/lyr_asap.mp4) | [full-resolution MP4](https://github.com/hellolulujiang/flowtopo/blob/main/docs/media/lyr_cfds.mp4) | [full-resolution MP4](https://github.com/hellolulujiang/flowtopo/blob/main/docs/media/lyr_alap.mp4) |
 
 The minimum layer count is set by the longest flow path. The conflict-free rule
 may add a few layers; on the example basin it adds none (949 layers for all
@@ -115,9 +116,9 @@ from a cell to its receiver. There are three ways to do it:
 
 | pull | atomic push | push |
 | :---: | :---: | :---: |
-| [![](docs/media/manner_pull.gif)](https://github.com/user-attachments/assets/c897fd03-b2dd-4371-aba8-cd2bd0692857) | [![](docs/media/manner_atomic_push.gif)](https://github.com/user-attachments/assets/f988af11-ce25-4fb4-9edd-1bfa5b025dde) | [![](docs/media/manner_push.gif)](https://github.com/user-attachments/assets/35cad382-2d3c-4378-aab4-7df1c9fc5384) |
+| [![](docs/media/manner_pull.gif)](https://github.com/hellolulujiang/flowtopo/blob/main/docs/media/manner_pull.mp4) | [![](docs/media/manner_atomic_push.gif)](https://github.com/hellolulujiang/flowtopo/blob/main/docs/media/manner_atomic_push.mp4) | [![](docs/media/manner_push.gif)](https://github.com/hellolulujiang/flowtopo/blob/main/docs/media/manner_push.mp4) |
 | each receiver reads its donors; needs the upstream table | donors write through atomics; correct, but float sums are not reproducible | donors write directly; deterministic, no locks; requires the conflict-free layering |
-| [▶ HD video](https://github.com/user-attachments/assets/c897fd03-b2dd-4371-aba8-cd2bd0692857) | [▶ HD video](https://github.com/user-attachments/assets/f988af11-ce25-4fb4-9edd-1bfa5b025dde) | [▶ HD video](https://github.com/user-attachments/assets/35cad382-2d3c-4378-aab4-7df1c9fc5384) |
+| [full-resolution MP4](https://github.com/hellolulujiang/flowtopo/blob/main/docs/media/manner_pull.mp4) | [full-resolution MP4](https://github.com/hellolulujiang/flowtopo/blob/main/docs/media/manner_atomic_push.mp4) | [full-resolution MP4](https://github.com/hellolulujiang/flowtopo/blob/main/docs/media/manner_push.mp4) |
 
 A push is only safe if no two cells in a layer write to the same receiver.
 Conflict counts on the example basin (93,432 cells):
