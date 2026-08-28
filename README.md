@@ -11,8 +11,8 @@ distance to outlet, longest upstream path, Strahler stream order. Each runs on
 every structure and the results are cross-checked.
 
 Video overview of the six structures and the three propagation manners:
-<https://youtu.be/tE5K2wM3TTY>. The animations below are also in
-[`docs/media`](docs/media) as MP4 files, which can be paused.
+<https://youtu.be/tE5K2wM3TTY>. Click any animation below to open the
+full-resolution video, which can be paused, scrubbed and restarted.
 
 ## Serial orderings
 
@@ -21,7 +21,7 @@ the cells it depends on. One pass over the sequence computes any kernel.
 
 | topological sort from the sources | breadth-first from the pit | depth-first from the pit |
 | :---: | :---: | :---: |
-| ![](docs/media/seq_topo.gif) | ![](docs/media/seq_bfs.gif) | ![](docs/media/seq_dfs.gif) |
+| [![](docs/media/seq_topo.gif)](docs/media/seq_topo.mp4) | [![](docs/media/seq_bfs.gif)](docs/media/seq_bfs.mp4) | [![](docs/media/seq_dfs.gif)](docs/media/seq_dfs.mp4) |
 | a cell is appended once all its donors are done | cells in order of hop count from the pit | one tributary subtree at a time |
 
 The three differ in memory access pattern. Depth-first has the lowest simulated
@@ -36,7 +36,7 @@ in parallel. Layer 0 holds the headwaters.
 
 | as soon as possible | conflict-free downstream | as late as possible |
 | :---: | :---: | :---: |
-| ![](docs/media/lyr_asap.gif) | ![](docs/media/lyr_cfds.gif) | ![](docs/media/lyr_alap.gif) |
+| [![](docs/media/lyr_asap.gif)](docs/media/lyr_asap.mp4) | [![](docs/media/lyr_cfds.gif)](docs/media/lyr_cfds.mp4) | [![](docs/media/lyr_alap.gif)](docs/media/lyr_alap.mp4) |
 | every cell in the earliest layer its donors allow | as soon as possible, plus one rule: no two cells in a layer share a receiver | every cell in the latest layer possible |
 
 The minimum layer count is set by the longest flow path. The conflict-free rule
@@ -49,7 +49,7 @@ Three ways to propagate values through the network:
 
 | pull | atomic push | push |
 | :---: | :---: | :---: |
-| ![](docs/media/manner_pull.gif) | ![](docs/media/manner_atomic_push.gif) | ![](docs/media/manner_push.gif) |
+| [![](docs/media/manner_pull.gif)](docs/media/manner_pull.mp4) | [![](docs/media/manner_atomic_push.gif)](docs/media/manner_atomic_push.mp4) | [![](docs/media/manner_push.gif)](docs/media/manner_push.mp4) |
 | each receiver reads its donors; needs the upstream table | donors write through atomics; correct, but float sums are not reproducible | donors write directly; deterministic, no locks; requires the conflict-free layering |
 
 A push is only safe if no two cells in a layer write to the same receiver.
