@@ -214,7 +214,23 @@ layering and by both partitions.
 
 Metres per degree from the WGS-84 series expansion, and the spherical area of
 a lat-lon pixel. Checked against pyproj: metres per degree agree to 1e-5, the
-series' own accuracy, and cell area matches the spherical integral exactly.
+series' own accuracy. Cell area matches the closed-form spherical value on
+square and non-square grids alike, and summing a whole-globe grid reproduces
+4 pi R squared.
+
+Two approximations are worth knowing about, both small on a 3 arc-second grid
+and larger on a coarse one.
+
+Cell-to-cell distance is planar, not geodesic: metres per degree are evaluated
+once and combined with Pythagoras, rather than solving the inverse geodesic
+problem. Over one 90 m cell the two agree far below the resolution of the data.
+
+The latitude at which they are evaluated is the midpoint of the two row edges
+rather than of the two cell centres, so it sits half a pixel north of the
+true midpoint. This matches the C implementation that produced the released
+products, and the two are kept identical deliberately. On the bundled basin it
+costs 0.16 m over a 98 km path, 1.7e-6 relative; on a one-degree grid at 60 N
+it approaches a percent.
 
 ### `raster`
 

@@ -66,6 +66,13 @@ def pixel_length(idxs_ds, ncol, transform, latlon=True):
     dc = np.abs((ds % ncol) - (idx % ncol))
 
     if latlon:
+        # Midpoint of the two row edges, not of the two cell centres: a cell
+        # centre sits at north + (r + 0.5) * yres, so this latitude is half a
+        # pixel north of the true midpoint. It is what the C implementation
+        # that produced the released products does, and the two are kept
+        # identical on purpose. The cost is 0.16 m over a 98 km path on the
+        # bundled basin, 1.7e-6 relative, and it grows with the pixel: on a
+        # one-degree grid at 60 N it is near a percent. See docs/methods.md.
         lat = north + (r0 + r1) / 2.0 * yres
         dy = np.where(dr == 0, 0.0, degree_metres_y(lat) * abs(yres))
         dx = np.where(dc == 0, 0.0, degree_metres_x(lat) * abs(xres))
