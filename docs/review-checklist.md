@@ -1,7 +1,7 @@
 # Review checklist
 
-Twenty rounds of review have been run on this package. Each round attacked one
-class of defect, and seven real bugs came out of them, listed at the end. A
+Several passes of review have been run on this package. Each attacked one
+class of defect, and the real bugs that came out are listed at the end. A
 reviewer picking this up should not repeat the rounds that found nothing;
 attack the angles that are still untested, and re-run the regression tests that
 pin the bugs already found.
@@ -62,9 +62,10 @@ anyone to take a statement on trust.
 16. **Dtypes and limits.** int32 indices reach 2.1e9 cells, comfortably above
     the 3.4e8 of the largest MERIT region. Strahler saturates at 255 rather
     than wrapping.
-17. **Accumulation precision.** float32 stops resolving one 90 m cell once the
-    running total passes about 1e5 km²; `cell_area` in float64 accumulates in
-    float64, and all manners then agree to 1e-9.
+17. **Accumulation precision.** A float32 total past about 2e5 km² no longer
+    moves when one 90 m cell is added to it; at 1e6 km² it takes five cells and
+    at 5e6 about thirty-six. float64 `cell_area` accumulates in float64, an
+    integer one does too, and all manners then agree to 1e-9.
 18. **Memory.** About 400 bytes per cell with every structure cached. The
     upstream table is the largest single item; skip it by not using `pull`.
 19. **Stability.** A hundred repeated calls produce no drift and no growth.
@@ -87,6 +88,12 @@ anyone to take a statement on trust.
 | Precision | `upstream_area` forced float32 | A continental basin lost the cells nearest its outlet, with no way to ask for more |
 | Cache model | LRU ages started at 0, like an untouched way | Every set lost one way; the simulator disagreed with a true LRU by 5e-6 |
 | Decoding | The grid's own nodata code was ignored | 255 is a terminal here, so a grid using it for nodata silently gained cells |
+| Cycles | `layering_cfds` swept unschedulable cells into one final layer | A ring then sat wholly inside one layer, where a push reads a value another cell in the same layer is writing. Conflicts stayed at zero, so the count could not see it |
+| Precision | An integer `cell_area` fell to float32 | Counting upstream cells, the obvious use for an integer array, stops being exact above 2**24 |
+| Balancing | `partition` counted cycle cells as work | With 36% of cells in a ring, load read 167/51/51/51 where the real work was 51 everywhere |
+| Links | Nine README video links pointed at attachments from a discarded issue draft | GitHub does not keep those, so every reader got 404 where the page promised HD playback |
+| Documentation | The rectangle-clip figure was given as a flat 98% | It is not a constant: measured across thirteen rectangles it runs 92.7% to 99.6% |
+| Documentation | The parallel timing table was one stale run | Its pull row sat outside the spread of three fresh runs on the same machine |
 
 ## A third pass: prose, layout and coverage
 
@@ -144,8 +151,9 @@ A reviewer looking for something new should start here.
 * **A second real dataset.** Everything is checked on one 731 km² basin and on
   synthetic networks. A HydroSHEDS tile, or a MERIT region with many basins and
   a dominant one, would exercise the partition code where it matters.
-* **Very large grids.** Nothing above 4 million cells has been run. The int32
-  limit is argued, not tested.
+* **Very large grids.** `benchmark.py` runs 16 million cells and a single
+  chain of 4 million orders without overflowing any stack, but the int32 limit
+  at 2.1e9 is still argued from arithmetic rather than tested.
 * **Non-MERIT D8 conventions.** Only the powers-of-two-clockwise-from-east
   encoding is handled. ArcGIS uses the same codes; other tools do not.
 * **Windows and Linux.** Everything so far has run on macOS, arm64. CI covers
@@ -154,12 +162,17 @@ A reviewer looking for something new should start here.
 * **The locality metrics beyond the miss rate.** Stride, reuse distance and the
   per-layer statistics are computed but only the miss rate has been validated
   against an independent implementation.
+* **Exhaustive enumeration beyond six cells.** Every network of three to six
+  cells has been enumerated: the conflict-free layering never shares a receiver
+  within a layer and never holds a cell together with its own receiver, and the
+  three orderings are topological in their stated direction. Seven cells and up
+  is untested, as is any property that needs a wider fan-in to show itself.
 
 ## Running the checks
 
 ```sh
 pip install -e ".[speed,test]"
-pytest                 # 86 tests
+pytest                 # 177 tests
 python example.py      # every structure, kernel and manner; ends PASS or FAIL
 python benchmark.py    # serial against threaded
 ```
