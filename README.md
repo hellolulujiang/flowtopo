@@ -209,6 +209,9 @@ python benchmark.py     # serial vs threaded at several grid sizes
   complexity.
 * [`examples/quickstart.ipynb`](examples/quickstart.ipynb) — a notebook on the
   bundled data, stored with its output so it reads without running anything.
+* [`docs/review-checklist.md`](docs/review-checklist.md) — what has been
+  checked and how, the bugs those checks found, and the angles still
+  unattacked.
 
 ## Example data
 
