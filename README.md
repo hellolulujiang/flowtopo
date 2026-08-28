@@ -249,9 +249,12 @@ subbasin of the bundled example: all three orderings stayed valid, all three
 layerings kept their layers independent, `cfds` kept zero conflicts, and
 recomputing from scratch on the clip gave the identical answer.
 
-One rule. Cut along basin boundaries, never through the middle of a basin. The
-ordering survives either way; the *values* do not. A cut turns the cells on it
-into pits, and everything draining in from beyond the cut is simply missing.
+One rule: keep whole basins. Cut a rectangle through the middle of one and
+nothing will complain, but the answers will be quietly too small. Say 100 km²
+drains to the point you care about and your rectangle leaves 60 km² of that
+outside. Those upstream cells are now gone, so the cells on the cut look like
+outlets, and the drainage area comes back as 40 km². No error, no warning,
+just a smaller number. Take a whole basin, or a whole region.
 
 ### Bring your own flow directions
 
