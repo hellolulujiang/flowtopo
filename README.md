@@ -230,40 +230,53 @@ too, which matters because 255 means a terminal here, not nodata.
 python example.py --data my_dir.tif
 ```
 
-## Getting the input data
+## Two ways to use this
 
-The structures are indexed against the MERIT Hydro 90 m flow-direction grid,
-cell for cell. To recompute anything, or to use a released structure on real
-data, you need that grid, and it is **not redistributed here**: get it from its
-authors at <http://hydro.iis.u-tokyo.ac.jp/~yamadai/MERIT_Hydro/>, under the
-CC BY-NC 4.0 terms they set. Only the 731 km² example basin travels with this
-repository, under the same terms.
+### Take the structures we release
 
-The global grid spans 180° W to 180° E and 85° N to 60° S: about 174,000 rows
-by 432,000 columns, 75.17 billion cells, of which 22.24 billion are land. It is
-distributed as 5° × 5° tiles.
+The structures for the whole 90 m network are on Zenodo, one tile per
+hydrological region, ready to read. To compute anything on them you also need
+the flow-direction grid they are indexed against, and that is **not
+redistributed here**: get it from its authors at
+<http://hydro.iis.u-tokyo.ac.jp/~yamadai/MERIT_Hydro/>, under the CC BY-NC 4.0
+terms they set. The release states which MERIT Hydro tiles each region covers.
 
-Two ways to work with it:
+You do not need a whole region. Clip a basin out of one and the structures
+clip with it: filter a released sequence to the cells you kept and it is still
+a topological sort of them, and a filtered layering keeps its layers mutually
+independent, the conflict-free guarantee included. Verified on a 12,809-cell
+subbasin of the bundled example: all three orderings stayed valid, all three
+layerings kept their layers independent, `cfds` kept zero conflicts, and
+recomputing from scratch on the clip gave the identical answer.
 
-**A region at a time.** Mosaic the tiles that cover one of the 65 hydrological
-regions and run the structures on that. A region encloses only complete basins
-and stays within 38° × 38°, which keeps its cell indices inside 32-bit
-integers — the same reason this package uses int32 throughout. The region
-boundaries come from MERIT-FullBasin, below.
+One rule. Cut along basin boundaries, never through the middle of a basin. The
+ordering survives either way; the *values* do not. A cut turns the cells on it
+into pits, and everything draining in from beyond the cut is simply missing.
+
+### Bring your own flow directions
+
+Any D8 grid in this convention works. Build the eight structures yourself and
+compute on them:
 
 ```python
 import flowtopo
-topo = flowtopo.FlowTopo.from_raster("region43_dir.tif")
-upa  = topo.upstream_area(ordering="dfs")
+
+topo = flowtopo.FlowTopo.from_raster("my_dir.tif")
+
+seq   = topo.ordering("dfs")              # one of three orderings
+layers, n = topo.layering("cfds")         # one of three layerings
+part, load = topo.partition(n_parts=4)    # one of two partitions
+
+upa = topo.upstream_area(ordering="dfs")  # or any kernel, on any structure
 ```
 
-**One basin at a time.** Clip whatever basin you care about, as the bundled
-example was clipped, and run the same code. A clipped subset stays valid:
-removing downstream cells does not change what its upstream cells depend on.
+This is the same code that produced the released structures, so a region you
+build yourself and a region you download are the same thing.
 
-Whole basins or whole regions, never an arbitrary rectangle — a cut through
-the middle of a basin turns the cells on the cut into pits, and the drainage
-area beyond it is simply gone.
+Work a region or a basin at a time rather than the globe. A region encloses
+only complete basins and stays within 38° × 38°, which keeps its cell indices
+inside 32-bit integers — the reason this package uses int32 throughout. The
+region boundaries are in MERIT-FullBasin, below.
 
 ## Global products
 
@@ -362,10 +375,11 @@ clone verifies itself:
 pytest
 ```
 
-150 tests. Every ordering, layering, partition, kernel and manner is
+164 tests. Every ordering, layering, partition, kernel and manner is
 cross-checked on the example basin, write-conflict counts included. The
 structures are checked against their definitions directly: an ordering is a
-topological sort, a layer is an antichain, a receiver comes after its donors. Degenerate
+topological sort, a layer is an antichain, a receiver comes after its
+donors, and all of that survives clipping a basin out of a region. Degenerate
 inputs get their own: an empty grid, a lone cell, networks with cycles. So do
 the API's promises — cached arrays are read-only, repeated calls agree bit for
 bit, accumulation keeps the precision it was given.

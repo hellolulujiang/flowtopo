@@ -150,3 +150,64 @@ def test_reversing_a_layering_mirrors_it(topo):
     inside = topo.mask
     assert np.array_equal(flipped[inside], layers[inside].max() - layers[inside])
     assert np.all(flipped[~inside] == -1)
+
+
+# ---------------------------------------------------------------------------
+# Clipping a basin out of a region keeps the structures usable, which is what
+# lets someone take a released region and work on part of it
+# ---------------------------------------------------------------------------
+
+
+@pytest.fixture(scope="module")
+def clipped(topo):
+    """A cell and everything upstream of it: a whole subbasin."""
+    area = topo.upstream_area(ordering="dfs")
+    inside_range = topo.mask & (area > area[topo.mask].max() * 0.05)
+    root = int(np.nonzero(inside_range)[0][0])
+
+    inside = np.zeros(topo.idxs_ds.size, dtype=bool)
+    inside[root] = True
+    for cell in topo.ordering("dfs", "d2u"):      # receivers before donors
+        receiver = topo.idxs_ds[cell]
+        if receiver >= 0 and receiver != cell and inside[receiver]:
+            inside[cell] = True
+    assert inside.sum() > 100
+    return inside
+
+
+@pytest.mark.parametrize("name", ORDERINGS)
+def test_an_ordering_filtered_to_a_subbasin_is_still_a_topological_sort(
+        topo, clipped, name):
+    kept = topo.ordering(name, "d2u")
+    kept = kept[clipped[kept]]
+
+    position = np.full(topo.idxs_ds.size, -1, dtype=np.int64)
+    position[kept] = np.arange(kept.size)
+    cells = kept.astype(np.int64)
+    receivers = topo.idxs_ds[cells]
+    moving = (receivers >= 0) & (receivers != cells)
+    moving &= clipped[np.where(receivers >= 0, receivers, 0)]
+    assert np.all(position[receivers[moving]] < position[cells[moving]])
+
+
+@pytest.mark.parametrize("name", LAYERINGS)
+def test_a_layering_filtered_to_a_subbasin_keeps_its_layers_independent(
+        topo, clipped, name):
+    layers, _ = topo.layering(name)
+    for level in np.unique(layers[clipped]):
+        members = np.nonzero(clipped & (layers == level))[0]
+        receivers = topo.idxs_ds[members]
+        moving = (receivers >= 0) & (receivers != members)
+        moving &= clipped[np.where(receivers >= 0, receivers, 0)]
+        assert not np.any(layers[receivers[moving]] == level)
+
+
+def test_the_conflict_free_guarantee_survives_clipping(topo, clipped):
+    layers, _ = topo.layering("cfds")
+    for level in np.unique(layers[clipped]):
+        members = np.nonzero(clipped & (layers == level))[0]
+        receivers = topo.idxs_ds[members]
+        moving = (receivers >= 0) & (receivers != members)
+        moving &= clipped[np.where(receivers >= 0, receivers, 0)]
+        receivers = receivers[moving]
+        assert receivers.size == np.unique(receivers).size
