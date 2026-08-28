@@ -101,11 +101,17 @@ def upstream_area(idxs_ds, cell_area, *, seq_u2d=None, decomp=None,
 
     Returns
     -------
-    upa : ndarray, in the dtype of ``cell_area``
+    upa : ndarray
+        float32 when ``cell_area`` is float32, float64 otherwise.  Integer
+        input accumulates in float64 so that counting cells stays exact.
     """
     _check_manner(manner, MANNERS)
     idxs_ds = np.ascontiguousarray(idxs_ds, dtype=np.int32)
-    dtype = np.float64 if np.asarray(cell_area).dtype == np.float64 else np.float32
+    # float32 only when that is what came in. Anything else accumulates in
+    # float64: an integer cell_area, the natural way to count upstream cells,
+    # stops being exact above 2**24 in float32, which a 90 m network passes
+    # long before it runs out of cells.
+    dtype = np.float32 if np.asarray(cell_area).dtype == np.float32 else np.float64
     upa = np.ascontiguousarray(cell_area, dtype=dtype).copy()
     nodata = dtype(nodata)
     zero = dtype(0.0)

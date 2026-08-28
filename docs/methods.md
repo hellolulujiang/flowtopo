@@ -148,7 +148,9 @@ itself; it needs the upstream adjacency table.
 
 ### `upstream_area`
 
-Accumulates a per-cell quantity downstream. Keeps the dtype of `cell_area`:
+Accumulates a per-cell quantity downstream. Accumulates in float32 when
+`cell_area` is float32 and in float64 otherwise, so counting cells with an
+integer array stays exact:
 a float32 total past about 2e5 km² no longer moves when one 90 m cell, about
 0.007 km², is added to it, so pass float64 on a continental network.
 

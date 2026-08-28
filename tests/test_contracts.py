@@ -84,6 +84,25 @@ def test_upstream_area_follows_the_dtype_of_cell_area(topo):
     assert topo.upstream_area(ordering="dfs", cell_area=wide).dtype == np.float64
 
 
+@pytest.mark.parametrize("dtype", [np.int32, np.int64, np.uint8])
+def test_counting_cells_with_an_integer_array_accumulates_in_float64(topo, dtype):
+    """float32 stops separating consecutive integers above 2**24.
+
+    A 90 m network passes that long before it runs out of cells, so passing
+    ones to count upstream cells has to widen to float64 rather than follow
+    the float32 default.
+    """
+    ones = np.ones(topo.idxs_ds.size, dtype=dtype)
+    count = topo.upstream_area(ordering="dfs", cell_area=ones)
+    assert count.dtype == np.float64
+
+    # Every cell is counted once, in exactly one basin, so the pits between
+    # them account for the whole grid and each count is a whole number.
+    pits = topo.mask & (topo.idxs_ds == np.arange(topo.idxs_ds.size))
+    assert count[pits].sum() == np.count_nonzero(topo.mask)
+    assert np.all(count[topo.mask] == np.floor(count[topo.mask]))
+
+
 @pytest.mark.parametrize("kwargs", [
     {"layering": "cfds", "manner": "push"},
     {"layering": "alap", "manner": "pull"},
