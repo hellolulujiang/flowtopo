@@ -80,6 +80,9 @@ def pixel_length(idxs_ds, ncol, transform, latlon=True):
 def pixel_area_km2(nrow, ncol, transform):
     """Per-cell area in square kilometres, broadcast over the grid."""
     lats = transform[GT_Y_ORIGIN] + transform[GT_PIXEL_H] * (np.arange(nrow) + 0.5)
-    res = abs(transform[GT_PIXEL_W])
-    per_row = cell_area_m2(lats, res, res) * 1e-6
+    # The two sides are read separately. They are equal on MERIT Hydro, three
+    # arc-seconds each way, but a grid with taller pixels than wide is a valid
+    # geographic grid and using one side for both halves or doubles the area.
+    per_row = cell_area_m2(lats, abs(transform[GT_PIXEL_W]),
+                           abs(transform[GT_PIXEL_H])) * 1e-6
     return np.repeat(per_row.astype(np.float32), ncol)

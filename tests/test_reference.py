@@ -222,3 +222,41 @@ def test_mainstem_runs_after_its_tributaries(topo):
         if np.any(part[donors] >= 0):
             fed_from_parts += 1
     assert fed_from_parts > 0
+
+
+# ---------------------------------------------------------------------------
+# Cell area against the closed-form spherical value
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize("nrow, ncol", [
+    (180, 360),      # square, one degree each way
+    (180, 720),      # wider than tall
+    (360, 360),      # taller than wide
+    (90, 360),       # twice as tall as wide
+])
+def test_cell_area_matches_the_spherical_formula(nrow, ncol):
+    """The two sides of a pixel have to be read separately.
+
+    A band of latitude between lat1 and lat2, spanning dlon of longitude, has
+    area R^2 * dlon * (sin lat2 - sin lat1). Reading only the pixel width and
+    using it for the height as well halves or doubles that on any grid whose
+    pixels are not square, and gets the right answer on the square grid that
+    would catch it.
+    """
+    radius_km = 6371.0088
+    dlat, dlon = 180.0 / nrow, 360.0 / ncol
+    transform = (-180.0, dlon, 0.0, 90.0, 0.0, -dlat)
+    topo = flowtopo.FlowTopo.from_d8(np.zeros((nrow, ncol), np.uint8),
+                                     transform=transform)
+    area = np.asarray(topo.cell_area).reshape(nrow, ncol)
+
+    for row in (0, nrow // 3, nrow // 2, nrow - 1):
+        top = np.radians(90.0 - row * dlat)
+        bottom = np.radians(90.0 - (row + 1) * dlat)
+        expected = (radius_km ** 2 * np.radians(dlon)
+                    * (np.sin(top) - np.sin(bottom)))
+        assert area[row, 0] == pytest.approx(expected, rel=1e-4)
+
+    # The whole grid is the whole sphere, whatever the pixel shape.
+    assert area.sum() == pytest.approx(4 * np.pi * radius_km ** 2, rel=1e-4)

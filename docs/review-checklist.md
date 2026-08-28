@@ -53,7 +53,10 @@ anyone to take a statement on trust.
 13. **Empty grids, lone cells, cycles.** Nothing raises; a sequence shorter
     than the valid-cell count reports the cycle.
 14. **Raster variants.** Southern hemisphere, the antimeridian, non-square
-    pixels, coarse resolution, 80°N, and a D8 grid stored as float32.
+    pixels, coarse resolution, 80°N, and a D8 grid stored as float32. Cell
+    area is now checked against the closed-form spherical value on four grid
+    shapes, square and not; the earlier pass looked at these rasters but never
+    compared an area, which is how the bug below survived it.
 15. **Foreign nodata codes.** A grid that marks nodata as 255, 0 or anything
     else is read correctly.
 
@@ -94,6 +97,8 @@ anyone to take a statement on trust.
 | Links | Nine README video links pointed at attachments from a discarded issue draft | GitHub does not keep those, so every reader got 404 where the page promised HD playback |
 | Documentation | The rectangle-clip figure was given as a flat 98% | It is not a constant: measured across thirteen rectangles it runs 92.7% to 99.6% |
 | Documentation | The parallel timing table was one stale run | Its pull row sat outside the spread of three fresh runs on the same machine |
+| Geodesy | `pixel_area_km2` read the pixel width and used it for the height too | Cell area was out by the aspect ratio on any grid without square pixels: half on a 0.5 x 1 degree grid, double on 1 x 0.5. MERIT Hydro is square, so nothing released moves |
+| Licence | The MIT grant named src/ and tools/, neither of which exists here | Carried over from the C package, so the grant named nothing in this repository |
 
 ## A third pass: prose, layout and coverage
 
