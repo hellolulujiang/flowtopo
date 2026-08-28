@@ -163,10 +163,10 @@ limit.
 
 Those rankings come from the paper's C run at continental scale. This package
 is numba over numpy at a much smaller size, and it does not reproduce them
-term for term: on a 16-million-cell grid here, pull loses to the serial
-sequence because building and reading the donor table costs more than ten
-threads save, and push under `cfds` is the fastest parallel form. The
-structures are the same; which one wins depends on your machine and your grid,
+term for term. On a 16-million-cell grid here, push under `cfds` is the
+fastest parallel form, and pull loses even to the serial sequence: building
+and reading the donor table costs more than ten threads save. The structures
+are the same either way. Which one wins depends on your machine and your grid,
 so measure with `benchmark.py` before choosing.
 
 ## Install
