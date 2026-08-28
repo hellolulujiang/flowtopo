@@ -69,12 +69,15 @@ class FlowTopo:
     # -- constructors ------------------------------------------------------
 
     @classmethod
-    def from_d8(cls, d8, shape=None, transform=None, latlon=True):
+    def from_d8(cls, d8, shape=None, transform=None, latlon=True, nodata=None):
         """Build from a D8 flow-direction raster.
 
         Takes the same array ``pyflwdir.from_array(d8, ftype="d8")`` takes:
         powers of two clockwise from east, 0 and 255 terminal, 247 nodata.
         A 2-D array is flattened; a flat one needs ``shape``.
+
+        ``nodata`` names a second nodata code, for a grid that does not use
+        247. :meth:`from_raster` fills it in from the file.
         """
         d8 = np.asarray(d8)
         if d8.ndim == 2:
@@ -83,9 +86,9 @@ class FlowTopo:
         elif shape is None:
             raise ValueError("a flat d8 array needs shape=(nrow, ncol)")
         nrow, ncol = shape
-        idxs_ds = core.d8_to_downstream(d8, nrow, ncol)
+        idxs_ds = core.d8_to_downstream(d8, nrow, ncol, nodata=nodata)
         obj = cls(idxs_ds, shape, transform=transform, latlon=latlon,
-                  mask=np.asarray(d8, dtype=np.uint8) != core.D8_NODATA)
+                  mask=idxs_ds >= 0)
         obj._cache["d8"] = np.ascontiguousarray(d8, dtype=np.uint8)
         return obj
 
@@ -94,7 +97,8 @@ class FlowTopo:
         """Build from a single-band D8 GeoTIFF."""
         data, header = read_geotiff(path)
         return cls.from_d8(data, shape=header.shape,
-                           transform=header.transform, latlon=True)
+                           transform=header.transform, latlon=True,
+                           nodata=header.nodata)
 
     # -- geometry ----------------------------------------------------------
 

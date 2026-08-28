@@ -63,15 +63,20 @@ for _code, (_dr, _dc) in {
     _D8_DC[_code] = _dc
 
 
-def d8_to_downstream(dir_flat, nrow, ncol):
+def d8_to_downstream(dir_flat, nrow, ncol, nodata=None):
     """Decode a D8 direction raster into a downstream-pointer array.
 
     Parameters
     ----------
     dir_flat : ndarray of uint8, shape (nrow * ncol,)
-        D8 codes, row-major.  247 is nodata.
+        D8 codes, row-major.
     nrow, ncol : int
         Grid shape.
+    nodata : int, optional
+        The grid's nodata code. 247, the MERIT Hydro value, is always treated
+        as nodata; pass another one and it is excluded as well. Note that 255
+        is a valid endorheic terminal in this convention, so a grid that uses
+        255 for nodata has to say so.
 
     Returns
     -------
@@ -87,6 +92,8 @@ def d8_to_downstream(dir_flat, nrow, ncol):
 
     idxs_ds = np.full(size, MV, dtype=np.int32)
     valid = dir_flat != D8_NODATA
+    if nodata is not None and 0 <= int(nodata) <= 255 and int(nodata) != int(D8_NODATA):
+        valid &= dir_flat != np.uint8(int(nodata))
     idx = np.nonzero(valid)[0]
 
     codes = dir_flat[idx]
@@ -105,7 +112,7 @@ def d8_to_downstream(dir_flat, nrow, ncol):
 
     into_nodata = np.zeros(idx.size, dtype=bool)
     ok = ~(pit | outside)
-    into_nodata[ok] = dir_flat[idx_ds[ok]] == D8_NODATA
+    into_nodata[ok] = ~valid[idx_ds[ok]]
 
     self_pointing = pit | outside | into_nodata
     idxs_ds[idx] = np.where(self_pointing, idx, idx_ds).astype(np.int32)

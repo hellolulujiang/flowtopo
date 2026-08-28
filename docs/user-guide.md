@@ -233,7 +233,9 @@ Run `python benchmark.py` on your own machine.
 ## Working with your own rasters
 
 `FlowTopo.from_raster` reads any single-band D8 GeoTIFF in the MERIT Hydro
-convention. Write a result back next to it:
+convention: codes are powers of two clockwise from east, 0 and 255 are
+terminals, 247 is nodata. The file's own nodata value is honoured as well,
+which matters because 255 means an endorheic terminal here, not nodata. Write a result back next to it:
 
 ```python
 from flowtopo import write_geotiff

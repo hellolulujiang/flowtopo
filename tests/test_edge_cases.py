@@ -141,3 +141,33 @@ def test_partition_covers_everything_at_any_part_count(cycle_beside_basin, n_par
 def test_partition_rejects_a_meaningless_part_count(lone_pit, n_parts):
     with pytest.raises(ValueError):
         lone_pit.partition(n_parts=n_parts)
+
+
+# ---------------------------------------------------------------------------
+# A grid that does not use 247 for nodata
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize("code", [255, 0, 5])
+def test_the_grids_own_nodata_code_is_honoured(tmp_path, code):
+    """255 is a valid terminal in this convention, so a file must be believed."""
+    from flowtopo.raster import GridHeader, write_geotiff
+
+    grid = np.full((4, 4), D8_NODATA, dtype=np.uint8)
+    grid[1, :3] = [1, 1, 0]                 # a three-cell chain to a pit
+    grid[grid == D8_NODATA] = code          # relabel nodata
+
+    path = tmp_path / "dir.tif"
+    write_geotiff(str(path), grid.ravel(),
+                  GridHeader(ncol=4, nrow=4, dtype="uint8", nodata=float(code),
+                             transform=TRANSFORM))
+    topo = flowtopo.FlowTopo.from_raster(str(path))
+    assert topo.ncells == 3
+
+
+def test_a_cell_draining_into_nodata_becomes_a_pit():
+    grid = np.full((3, 3), D8_NODATA, dtype=np.uint8)
+    grid[1, 1] = 1                          # east, into nodata
+    topo = build(grid)
+    centre = 1 * 3 + 1
+    assert topo.idxs_ds[centre] == centre

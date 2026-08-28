@@ -216,7 +216,9 @@ python benchmark.py     # serial vs threaded at several grid sizes
 3 arc-seconds, 93,432 valid, 731 km², cut from
 [MERIT Hydro](https://doi.org/10.1029/2019WR024873) (Yamazaki et al., 2019).
 The GeoJSON files are the basin boundary and the outlet. Any D8 GeoTIFF in the
-same convention works:
+same convention works — codes as powers of two clockwise from east, 0 and 255
+terminal — and the file's own nodata value is honoured, which matters because
+255 is a terminal here rather than nodata:
 
 ```sh
 python example.py --data my_dir.tif
@@ -284,7 +286,7 @@ clone verifies itself:
 pytest
 ```
 
-82 tests: every ordering, layering, partition, kernel and manner is
+86 tests: every ordering, layering, partition, kernel and manner is
 cross-checked on the example basin, including the write-conflict counts;
 degenerate inputs — an empty grid, a lone cell, networks with cycles; and the
 API's contracts — cached arrays are read-only, repeated calls agree bit for
