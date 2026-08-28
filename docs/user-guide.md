@@ -161,6 +161,28 @@ confluence rule is *two branches of equal order raise the order by one*, which
 is a comparison and a count, not an addition. No atomic implements that, so
 under a layering the only safe push is the conflict-free one.
 
+## Splitting across processors
+
+A layering spreads a layer across threads that share memory. Running on several
+processors needs a second cut, and it has to follow the drainage hierarchy so
+that no value crosses a subregion boundary mid-kernel:
+
+```python
+part, load = topo.partition(n_parts=4, level="subbasin")
+```
+
+`part` holds a subregion index per cell, `-1` outside the network. With
+`level="basin"` whole basins are assigned to subregions by cell count; a basin
+is never split, so one dominant basin leaves the other processors idle. The
+bundled example is a single basin, so it shows this directly: basin-level gives
+`[93432, 0, 0, 0]`, subbasin-level `[23121, 23121, 23121, 23120]`.
+
+`level="subbasin"` cuts an oversized basin along its mainstem, found by walking
+upstream from the outlet and taking the larger tributary at each confluence.
+The tributary subtrees are dealt to the lighter subregions; the mainstem
+depends on them, so it is marked `flowtopo.MAINSTEM` and runs in a second stage
+after they finish.
+
 ## Threads
 
 The kernels in `flowtopo.kernels` run one numpy operation per layer. That makes

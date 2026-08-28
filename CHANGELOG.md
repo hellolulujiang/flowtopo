@@ -8,8 +8,11 @@ First release.
   pits, topological sort from the sources.
 * Three parallel layerings: as soon as possible, conflict-free downstream, as
   late as possible.
-* Four kernels: upstream drainage area, distance to outlet, longest upstream
-  path, Strahler stream order, each under the propagation manners it supports.
+* Two spatial partitions: basin-level and subbasin-level, both cutting along
+  the drainage hierarchy so subregions need no communication.
+* Four kernels to exercise the structures: upstream drainage area, distance to
+  outlet, longest upstream path, Strahler stream order, each under the
+  propagation manners it supports.
 * Memory-locality metrics with a simulated N-way set-associative LRU cache.
 * Threaded kernels through numba `prange` in `flowtopo.parallel`.
 * Expected outputs for the bundled example basin ship with the tests.

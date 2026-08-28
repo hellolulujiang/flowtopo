@@ -1,4 +1,4 @@
-"""FlowTopo -- orderings, layerings and kernels for D8 flow networks.
+"""FlowTopo -- orderings, layerings and partitions for D8 flow networks.
 
 A D8 flow network can be traversed in more than one way, and the choice
 changes both how fast the traversal runs and whether a parallel form is
@@ -54,6 +54,7 @@ from .kernels import (
 )
 from .layering import Decomposition, reverse_layers
 from .locality import parallel_locality, serial_locality
+from .partition import MAINSTEM, partition
 from .raster import GridHeader, read_geotiff, write_geotiff
 
 __version__ = "0.1.0"
@@ -76,7 +77,9 @@ __all__ = [
     "layering_asap",
     "layering_cfds",
     "longest_upstream_path",
+    "MAINSTEM",
     "parallel_locality",
+    "partition",
     "rank_to_pit",
     "read_geotiff",
     "read_geotiff",

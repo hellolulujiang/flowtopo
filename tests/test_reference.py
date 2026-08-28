@@ -175,3 +175,50 @@ def test_cfds_needs_no_more_layers_than_a_few(topo):
     _, n_cfds = topo.layering("cfds")
     assert n_cfds >= n_asap
     assert n_cfds <= n_asap * 1.5
+
+
+# ---------------------------------------------------------------------------
+# Spatial partitions
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize("level", ["basin", "subbasin"])
+def test_partition_covers_every_cell_exactly_once(topo, level):
+    part, _ = topo.partition(n_parts=4, level=level)
+    covered = (part >= 0) | (part == flowtopo.MAINSTEM)
+    assert np.array_equal(covered, topo.mask)
+
+
+@pytest.mark.parametrize("level", ["basin", "subbasin"])
+def test_partition_is_communication_free(topo, level):
+    """No cell drains into a different subregion, except onto the mainstem."""
+    part, _ = topo.partition(n_parts=4, level=level)
+    cells = np.nonzero(part >= 0)[0]
+    ds = topo.idxs_ds[cells]
+    moving = (ds >= 0) & (ds != cells)
+    cells, ds = cells[moving], ds[moving]
+    crossing = (part[ds] != part[cells]) & (part[ds] != flowtopo.MAINSTEM)
+    assert not crossing.any()
+
+
+def test_subbasin_balances_what_basin_cannot(topo):
+    """The bundled basin is a single basin: whole-basin assignment cannot split it."""
+    _, basin_load = topo.partition(n_parts=4, level="basin")
+    _, sub_load = topo.partition(n_parts=4, level="subbasin")
+    assert np.count_nonzero(basin_load) == 1          # one processor does everything
+    assert sub_load.max() / sub_load.mean() < 1.05    # subbasin spreads it evenly
+
+
+def test_mainstem_runs_after_its_tributaries(topo):
+    """Every mainstem cell has a donor outside the mainstem, so it must wait."""
+    part, _ = topo.partition(n_parts=4, level="subbasin")
+    stem = np.nonzero(part == flowtopo.MAINSTEM)[0]
+    assert stem.size > 0
+    us_table, n_up = topo.upstream()
+    fed_from_parts = 0
+    for cell in stem:
+        donors = us_table[cell][: n_up[cell]]
+        donors = donors[donors >= 0]
+        if np.any(part[donors] >= 0):
+            fed_from_parts += 1
+    assert fed_from_parts > 0

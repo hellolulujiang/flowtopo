@@ -8,7 +8,7 @@ the answers compared.
 
 import numpy as np
 
-from . import core, geodist, kernels, locality
+from . import core, geodist, kernels, locality, partition as _partition
 from .layering import Decomposition, reverse_layers
 from .raster import GridHeader, read_geotiff
 
@@ -285,6 +285,17 @@ class FlowTopo:
     def channel_mask(self, upa, threshold_km2=10.0):
         """Cells whose drainage area reaches ``threshold_km2``."""
         return self.mask & (np.asarray(upa) >= np.float32(threshold_km2))
+
+    # -- partitions --------------------------------------------------------
+
+    def partition(self, n_parts=4, level="subbasin"):
+        """Split the network into ``n_parts`` independent subregions.
+
+        ``level="basin"`` keeps every basin whole; ``level="subbasin"``
+        decomposes an oversized basin along its mainstem. Returns
+        ``(part, load)``; see :func:`flowtopo.partition.partition`.
+        """
+        return _partition.partition(self, n_parts=n_parts, level=level)
 
     # -- locality ----------------------------------------------------------
 

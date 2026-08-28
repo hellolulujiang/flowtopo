@@ -20,12 +20,13 @@ license: MIT
 version: 0.1.0
 repository-code: "https://github.com/hellolulujiang/flowtopo"
 abstract: >-
-  Six topological representations of a D8 flow network -- three serial
-  orderings and three parallel layerings -- and four kernels run over all of
-  them under every propagation manner each supports. The conflict-free
-  downstream layering guarantees that no two cells in a layer share a
-  receiver, which makes a threaded push safe without atomics and is the only
-  way to run Strahler stream order under push at all.
+  Reusable structures for a D8 flow network: three serial orderings, three
+  parallel layerings and two spatial partitions, computed once from the
+  flow-direction grid. Four kernels exercise them under every propagation
+  manner each supports. The conflict-free downstream layering guarantees that
+  no two cells in a layer share a receiver, which makes a threaded push safe
+  without atomics and is the only way to run Strahler stream order under push
+  at all.
 keywords:
   - hydrology
   - flow direction

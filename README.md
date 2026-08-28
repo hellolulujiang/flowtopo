@@ -2,15 +2,20 @@
 
 [![licence: MIT](https://img.shields.io/badge/licence-MIT-blue.svg)](LICENSE)
 
-Orderings, layerings and kernels for D8 flow networks, in Python.
+Orderings, layerings and partitions for D8 flow networks, in Python.
 
-FlowTopo builds reusable traversal structures for a D8 flow network: three
-serial orderings and three parallel layerings, computed once from the
-flow-direction grid. Any flow-network computation can then run on them.
+FlowTopo builds reusable structures for a D8 flow network, computed once from
+the flow-direction grid and used by any computation over the network:
 
-Four kernels are included to test the structures — upstream drainage area,
-distance to outlet, longest upstream path, Strahler stream order. Each runs on
-every structure and the results are cross-checked.
+* **three serial orderings** — a single pass over the cells, one core;
+* **three parallel layerings** — independent cells grouped into layers, several
+  threads;
+* **two spatial partitions** — independent subregions, several processors.
+
+Four kernels come with the package to exercise them — upstream drainage area,
+distance to outlet, longest upstream path, Strahler stream order. They are
+tests of the structures, not the point of the package: each runs on every
+structure and the results are cross-checked.
 
 Video overview of the six structures and the three propagation manners:
 <https://youtu.be/tE5K2wM3TTY>. The animations below are small previews: the
@@ -78,6 +83,30 @@ layering.
 
 If `manner` is not given, FlowTopo picks a safe one for the layering.
 
+## Spatial partitions
+
+A layering spreads work across threads that share memory. Splitting the network
+across processors needs a second cut, along the drainage hierarchy, so that no
+value crosses a subregion boundary while a kernel runs.
+
+| basin-level | subbasin-level |
+| :---: | :---: |
+| ![](docs/media/part_basin.png) | ![](docs/media/part_subbasin.png) |
+| whole basins assigned to subregions, weighted by cell count | a basin too large for one subregion is cut along its mainstem |
+
+Whole basins cannot be split, so one large basin leaves the other processors
+idle. The bundled example is a single basin, which makes the point exactly:
+
+```python
+topo.partition(n_parts=4, level="basin")[1]      # [93432, 0, 0, 0]
+topo.partition(n_parts=4, level="subbasin")[1]   # [23121, 23121, 23121, 23120]
+```
+
+Subbasin-level walks upstream from the outlet, taking the larger tributary at
+each confluence. That isolates the mainstem; the tributary subtrees hanging off
+it are dealt to the lighter subregions, and the mainstem runs in a second stage
+once they finish. Its cells are marked `flowtopo.MAINSTEM`.
+
 ## Which structure to use
 
 From the paper's benchmark on the full 90 m network (22.2 billion cells,
@@ -93,8 +122,8 @@ From the paper's benchmark on the full 90 m network (22.2 billion cells,
 * **Non-linear kernels, or when RAM is tight** — the conflict-free downstream
   layering with push. Lock-free and deterministic, stores only the receiver
   pointer, and the only parallel option for Strahler order.
-* **The largest basins** — the subbasin partition, released with
-  MERIT-FlowTopo.
+* **Across processors** — the subbasin partition, run at about 13 threads each,
+  beyond which memory bandwidth rather than the algorithm bounds the speedup.
 
 The structures are computed once from the static D8 field and reused without
 limit.

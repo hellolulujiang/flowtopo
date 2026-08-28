@@ -103,6 +103,30 @@ differently, which changes the memory-access pattern.
 
 *Complexity:* O(N) time, O(N + B) space.
 
+## Spatial partitions
+
+Each returns a subregion index per cell, `-1` outside the network. Both cut
+along the drainage hierarchy, so no value crosses a subregion boundary while a
+kernel runs. Assignment is longest-processing-time-first: items are placed
+largest first, each into the lightest subregion so far.
+
+### `partition(topo, n_parts, level="basin")`
+
+Whole basins assigned to subregions, weighted by cell count. A basin is never
+split, so a dominant basin leaves the other subregions idle.
+
+*Complexity:* O(N + B log B) time, O(N) space.
+
+### `partition(topo, n_parts, level="subbasin")`
+
+Any basin larger than one subregion's share is decomposed along its mainstem,
+found by walking upstream from the outlet and taking the larger tributary at
+each confluence. The tributary subtrees become items in the assignment; the
+mainstem depends on them and is held back to a second stage, marked
+`flowtopo.MAINSTEM`.
+
+*Complexity:* O(N + E) time, O(N) space.
+
 ## Kernels
 
 | kernel | shape | manners |
