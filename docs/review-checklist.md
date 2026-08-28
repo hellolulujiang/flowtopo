@@ -167,7 +167,7 @@ A reviewer looking for something new should start here.
 * **Windows and Linux.** Everything so far has run on macOS, arm64. CI covers
   Linux for the tests but nothing checks the numbers there.
 * **numba version drift.** One version has been used throughout.
-* **The locality metrics beyond the miss rate.** Stride, reuse distance and the
+* **The locality metrics beyond the miss rate.** Stride, reuse interval and the
   per-layer statistics are computed but only the miss rate has been validated
   against an independent implementation.
 * **Exhaustive enumeration beyond six cells.** Every network of three to six

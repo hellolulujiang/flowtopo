@@ -273,10 +273,14 @@ set-associative LRU cache, so the two arrays a traversal reads compete for one
 cache. Default geometry: 32 KB 8-way L1, 1 MB 16-way L2, 35.75 MB 11-way L3.
 
 `serial_locality` reports, for one ordering: stride statistics, the row-jump
-fraction, cache-line reuse distance, receiver distance, and the simulated miss
+fraction, cache-line reuse interval, receiver distance, and the simulated miss
 rate per level. `parallel_locality` reports, for one layering: intra-layer
 span, gap statistics, cache-line footprint, receiver distance, and the miss
 rate on the flattened layer order, so the two are directly comparable.
+
+The reuse interval is the number of accesses between two touches of the same
+cache line. It is not the reuse distance of the cache literature, which counts
+the distinct lines touched in between and is the LRU stack distance.
 
 The simulator is checked against an LRU written independently: the two agree
 exactly on the example basin and on random access sequences. Six further tests

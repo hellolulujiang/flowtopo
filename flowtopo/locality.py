@@ -109,7 +109,14 @@ def miss_rates(seq, idxs_ds, elem_bytes=4, levels=("L1", "L2", "L3")):
     return out
 
 
-def _reuse_distances(cell_lines):
+def _reuse_intervals(cell_lines):
+    """Accesses between two touches of the same cache line.
+
+    This is the reuse interval, not the reuse distance of the cache
+    literature: that one counts how many *distinct* lines were touched in
+    between, which is the LRU stack distance. This counts accesses, which is
+    cheaper and is what the miss rates here are read alongside.
+    """
     """Accesses elapsed since the previous access to the same cache line."""
     if cell_lines.size < 2:
         return np.empty(0, dtype=np.int64)
@@ -136,7 +143,7 @@ def serial_locality(seq_d2u, idxs_ds, ncol, elem_bytes=4,
     Returns
     -------
     dict
-        ``stride_*``, ``row_jump_frac``, ``reuse_dist_*``, ``ds_stride_*`` and
+        ``stride_*``, ``row_jump_frac``, ``reuse_interval_*``, ``ds_stride_*`` and
         one ``miss_rate_<level>`` per requested cache level.
     """
     seq = np.ascontiguousarray(seq_d2u, dtype=np.int64)
@@ -151,7 +158,7 @@ def serial_locality(seq_d2u, idxs_ds, ncol, elem_bytes=4,
     cells = np.nonzero(valid)[0]
     ds_stride = np.abs(cells - idxs_ds[cells].astype(np.int64))
 
-    reuse = _reuse_distances(seq // cl_elems)
+    reuse = _reuse_intervals(seq // cl_elems)
 
     out = {
         "stride_mean": float(stride.mean()) if stride.size else 0.0,
@@ -160,8 +167,8 @@ def serial_locality(seq_d2u, idxs_ds, ncol, elem_bytes=4,
         "stride_p99": float(np.percentile(stride, 99)) if stride.size else 0.0,
         "stride_max": int(stride.max()) if stride.size else 0,
         "row_jump_frac": float(row_jump.mean()) if row_jump.size else 0.0,
-        "reuse_dist_mean": float(reuse.mean()) if reuse.size else 0.0,
-        "reuse_dist_median": float(np.median(reuse)) if reuse.size else 0.0,
+        "reuse_interval_mean": float(reuse.mean()) if reuse.size else 0.0,
+        "reuse_interval_median": float(np.median(reuse)) if reuse.size else 0.0,
         "ds_stride_mean": float(ds_stride.mean()) if ds_stride.size else 0.0,
         "ds_stride_median": float(np.median(ds_stride)) if ds_stride.size else 0.0,
         "ds_stride_max": int(ds_stride.max()) if ds_stride.size else 0,
