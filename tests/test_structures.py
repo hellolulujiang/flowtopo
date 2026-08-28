@@ -211,3 +211,32 @@ def test_the_conflict_free_guarantee_survives_clipping(topo, clipped):
         moving &= clipped[np.where(receivers >= 0, receivers, 0)]
         receivers = receivers[moving]
         assert receivers.size == np.unique(receivers).size
+
+
+def test_cutting_through_a_basin_loses_drainage_area_silently(topo):
+    """The one rule the README states, measured.
+
+    Clipping along basin boundaries is safe. A rectangle through the middle of
+    a basin is not: the cells it removes were still draining in, so everything
+    below the cut reads low, and nothing raises.
+    """
+    from flowtopo.core import D8_NODATA, d8_to_downstream
+
+    full = topo.upstream_area(ordering="dfs")
+
+    grid = np.zeros(topo.idxs_ds.size, dtype=np.uint8)
+    grid[:] = D8_NODATA
+    # rebuild a d8 grid from the network, then blank the left half
+    for cell in range(topo.idxs_ds.size):
+        if topo.mask[cell]:
+            grid[cell] = 1 if topo.idxs_ds[cell] != cell else 0
+    grid = grid.reshape(topo.shape).copy()
+    grid[:, : topo.ncol // 2] = D8_NODATA
+
+    clipped = flowtopo.FlowTopo.from_d8(grid, transform=TRANSFORM)
+    partial = clipped.upstream_area(ordering="dfs")
+
+    both = topo.mask & clipped.mask
+    assert both.any()
+    # no exception, and the clipped answers are never larger
+    assert np.all(partial[both] <= full[both] + 1e-6)

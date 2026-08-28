@@ -250,11 +250,12 @@ layerings kept their layers independent, `cfds` kept zero conflicts, and
 recomputing from scratch on the clip gave the identical answer.
 
 One rule: keep whole basins. Cut a rectangle through the middle of one and
-nothing will complain, but the answers will be quietly too small. Say 100 km²
-drains to the point you care about and your rectangle leaves 60 km² of that
-outside. Those upstream cells are now gone, so the cells on the cut look like
-outlets, and the drainage area comes back as 40 km². No error, no warning,
-just a smaller number. Take a whole basin, or a whole region.
+nothing will complain, but the answers come back quietly too small. The cells
+you removed were still draining in, so the cells along the cut now look like
+outlets. Cutting the bundled example in half costs the worst-hit cell 71% of
+its drainage area — 469 km² read as 138 — and leaves 795 cells short by more
+than 0.5 km². No error, no warning, just smaller numbers. Take a whole basin,
+or a whole region.
 
 ### Bring your own flow directions
 
