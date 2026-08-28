@@ -344,7 +344,7 @@ GeoTIFFs for 65 regions.
 
 ### The structures
 
-**MERIT-FlowTopo** ([10.5281/zenodo.20653059](https://doi.org/10.5281/zenodo.20653059))
+**MERIT-FlowTopo** ([10.5281/zenodo.20653058](https://doi.org/10.5281/zenodo.20653058))
 holds the traversal structures themselves. Every region carries the
 depth-first sequence, the conflict-free downstream and as-late-as-possible
 layerings, and the subbasin partition; Region 43 (South China) carries all
@@ -367,7 +367,7 @@ run becomes a read.
 
 ### What the structures compute
 
-**MERIT-DrainAttr** ([10.5281/zenodo.20686665](https://doi.org/10.5281/zenodo.20686665))
+**MERIT-DrainAttr** ([10.5281/zenodo.20686664](https://doi.org/10.5281/zenodo.20686664))
 is the four kernels run over those structures: a baseline, so the variables
 almost everyone wants need not be recomputed either.
 
@@ -383,7 +383,7 @@ why the release is the structures and not the variables.
 
 ### The input partition
 
-**MERIT-FullBasin** ([10.5281/zenodo.20344113](https://doi.org/10.5281/zenodo.20344113))
+**MERIT-FullBasin** ([10.5281/zenodo.20344112](https://doi.org/10.5281/zenodo.20344112))
 divides the network into the 65 hydrologically independent regions everything
 above is organised by. It comes from the companion dataset, not from here.
 
