@@ -5,6 +5,10 @@
 
 Orderings, layerings and partitions for D8 flow networks, in Python.
 
+This is the method and one worked example. The global 90 m products it computes
+are released separately on Zenodo, and the companion manuscript is
+Jiang et al. (in preparation); both are linked below.
+
 FlowTopo builds reusable structures for a D8 flow network, computed once from
 the flow-direction grid and used by any computation over the network:
 
@@ -18,13 +22,11 @@ distance to outlet, longest upstream path, Strahler stream order. They are
 tests of the structures, not the point of the package: each runs on every
 structure and the results are cross-checked.
 
-Video overview of the six structures and the three propagation manners:
-<https://youtu.be/tE5K2wM3TTY>. The animations below are small previews: the
-**▶ HD video** link under each one opens the full-resolution video, which can
-be paused, scrubbed, restarted and viewed fullscreen. The video opens in this
-tab; use the browser's Back button to return, or Ctrl/Cmd-click the link to
-open it in a new tab. The same files are archived in
-[`docs/media`](docs/media).
+A narrated video overview of the structures and the propagation manners:
+<https://youtu.be/tE5K2wM3TTY>. Every animation below is a preview; the
+**▶ HD video** under it opens the full-resolution version, which can be
+paused, scrubbed and viewed fullscreen (browser Back returns here). The files
+are archived in [`docs/media`](docs/media).
 
 ## Serial orderings
 
@@ -65,7 +67,7 @@ value crosses a subregion boundary while a kernel runs.
 
 | basin-level | subbasin-level |
 | :---: | :---: |
-| ![](docs/media/part_basin.png) | ![](docs/media/part_subbasin.png) |
+| [![](docs/media/part_basin.png)](docs/media/part_basin.png) | [![](docs/media/part_subbasin.png)](docs/media/part_subbasin.png) |
 | whole basins assigned to subregions, weighted by cell count | a basin too large for one subregion is cut along its mainstem |
 
 Whole basins cannot be split, so one large basin leaves the other processors
@@ -152,6 +154,8 @@ ldn = topo.distance_to_outlet(ordering="dfs")
 lup = topo.longest_upstream_path(ldn, ordering="dfs")
 strord = topo.strahler_order(ordering="dfs",
                              channel_mask=topo.channel_mask(upa, 10.0))
+
+part, load = topo.partition(n_parts=4, level="subbasin")      # across processors
 
 topo.to_2d(upa)                                               # back on the grid
 ```
@@ -248,7 +252,9 @@ pytest
 ```
 
 33 tests: every ordering, layering, partition, kernel and manner is
-cross-checked on the example basin, including the write-conflict counts.
+cross-checked on the example basin, including the write-conflict counts. The
+same tests, and `example.py` end to end, run on Python 3.10, 3.11 and 3.12 on
+every push; the badge at the top links to those runs.
 
 ## Citing
 
