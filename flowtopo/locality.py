@@ -44,7 +44,10 @@ def _simulate_lru(seq, idxs_ds, elem_bytes, capacity_lines, n_ways, array_offset
 
     misses = 0
     total = 0
-    clock = 0
+    # Ages start at 1, never 0. An untouched way keeps age 0 and so always
+    # looks older than any line that has been used, which is what makes the
+    # eviction scan pick an empty way before it evicts anything real.
+    clock = 1
     shift = 6  # 64-byte cache line
 
     for i in range(seq.size):

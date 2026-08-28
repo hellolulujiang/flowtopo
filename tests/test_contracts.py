@@ -123,3 +123,51 @@ def test_conflict_free_push_gives_the_same_answer_at_any_thread_count(topo):
     serial = topo.upstream_area(ordering="dfs")
     assert np.allclose(results[0][topo.mask], serial[topo.mask],
                        rtol=1e-4, atol=1e-2)
+
+
+# ---------------------------------------------------------------------------
+# The cache simulator is a measuring instrument, so it gets checked against
+# cases whose answer is known in advance
+# ---------------------------------------------------------------------------
+
+
+def _miss(sequence, receivers, **kwargs):
+    from flowtopo.locality import miss_rates
+
+    return miss_rates(np.asarray(sequence, dtype=np.int32),
+                      np.asarray(receivers, dtype=np.int32),
+                      elem_bytes=4, levels=("L1",), **kwargs)["L1"]
+
+
+def test_an_empty_way_is_used_before_anything_is_evicted():
+    """Two lines in one eight-way set: revisiting the first must hit."""
+    a, b = 0, 64 * 16          # both land in set 0
+    misses = _miss([a, b, a], np.full(b + 1, -1))
+    assert misses == pytest.approx(2 / 3)
+
+
+def test_walking_straight_through_memory_misses_once_per_cache_line():
+    cells = np.arange(200_000)
+    assert _miss(cells, np.full(cells.size, -1)) == pytest.approx(1 / 16, abs=2e-3)
+
+
+def test_returning_to_one_cell_misses_only_the_first_time():
+    cells = np.zeros(50_000)
+    assert _miss(cells, np.full(1, -1)) == pytest.approx(1 / 50_000, abs=1e-6)
+
+
+def test_a_working_set_larger_than_the_cache_misses_every_time():
+    lines = np.arange(512 * 8) * 16          # eight times the L1 capacity
+    cells = np.tile(lines, 4)
+    assert _miss(cells, np.full(int(lines.max()) + 1, -1)) == pytest.approx(1.0)
+
+
+@pytest.mark.parametrize("lines,thrashes", [(8, False), (9, True)])
+def test_associativity_boundary_sits_exactly_at_the_way_count(lines, thrashes):
+    """Eight lines per set fit; the ninth makes every revisit miss."""
+    cells = np.tile(np.arange(lines) * 64 * 16, 20)
+    misses = _miss(cells, np.full(int(cells.max()) + 1, -1))
+    if thrashes:
+        assert misses == pytest.approx(1.0)
+    else:
+        assert misses == pytest.approx(lines / cells.size, abs=1e-6)

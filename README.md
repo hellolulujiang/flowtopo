@@ -284,7 +284,7 @@ clone verifies itself:
 pytest
 ```
 
-76 tests: every ordering, layering, partition, kernel and manner is
+82 tests: every ordering, layering, partition, kernel and manner is
 cross-checked on the example basin, including the write-conflict counts;
 degenerate inputs — an empty grid, a lone cell, networks with cycles; and the
 API's contracts — cached arrays are read-only, repeated calls agree bit for
