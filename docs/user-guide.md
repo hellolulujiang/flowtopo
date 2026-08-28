@@ -139,6 +139,25 @@ conflicts under `asap`, a threaded push still returned correct results on one
 run, because the colliding cells landed on the same thread. Count the
 conflicts instead.
 
+### Cells that get no layer
+
+A layering returns `-1` for a cell it could not schedule. That happens for
+cells outside the network, and also for cells sitting in a cycle or draining
+into one: their dependencies never resolve, so no layer satisfies them. All
+three layerings leave those alone rather than forcing them somewhere, which
+keeps every layer independent whatever the input.
+
+MERIT Hydro is cycle-free, so this stays at zero on released data. A grid you
+built or repaired yourself may not be, and nothing raises. Check it:
+
+```python
+layers, _ = topo.layering("cfds")
+stranded = np.count_nonzero((layers < 0) & topo.mask)   # 0 on a clean grid
+```
+
+The orderings say the same thing a different way: a sequence shorter than
+`topo.ncells` means some cells never became reachable.
+
 ## Choosing a manner
 
 For a layering you also choose how a cell and its receiver exchange the value:
@@ -215,18 +234,23 @@ from flowtopo import parallel
 upa = parallel.upstream_area(topo, layering="cfds", manner="push")
 ```
 
-What to expect, measured on a synthetic 16,000,000-cell network with 10
-threads on an Apple M-series laptop:
+What to expect, from three runs of `benchmark.py` on a synthetic
+16,000,000-cell network with 10 threads on an Apple M-series laptop:
 
-| form | median s | speedup |
+| form | median s, three runs | speedup |
 | --- | --- | --- |
-| serial ordering, one thread | 0.0843 | 1.00× |
-| `cfds` layering, push, threads | 0.0513 | 1.64× |
-| `cfds` layering, pull, threads | 0.0816 | 1.03× |
+| serial ordering, one thread | 0.0854 – 0.0880 | 1.00× |
+| `cfds` layering, push, threads | 0.0505 – 0.0539 | 1.58 – 1.74× |
+| `cfds` layering, pull, threads | 0.0898 – 0.0971 | 0.91 – 0.95× |
 
-Drainage-area accumulation is memory-bound; 1.64× on ten threads is near the
-ceiling for this kernel. Among the always-correct forms, push under `cfds` is
-1.6× faster than pull and needs no adjacency table.
+Drainage-area accumulation is memory-bound, so under 2× on ten threads is
+close to the ceiling for this kernel. Among the always-correct forms, push
+under `cfds` runs about 1.8× faster than pull and needs no adjacency table.
+Pull is slower than the single-threaded sequence here: building and reading
+the upstream table costs more than the threads save.
+
+Timings move a few percent between runs and a lot between machines. Treat the
+ratios as the message and the seconds as one laptop's answer.
 
 Run `python benchmark.py` on your own machine.
 

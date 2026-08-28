@@ -628,7 +628,10 @@ def layering_asap(idxs_ds):
     Returns
     -------
     layers : ndarray of int32
-        Layer index per cell, ``-1`` outside the network.
+        Layer index per cell.  ``-1`` means the cell has no layer, for one of
+        two reasons: it is outside the network, or it sits in a cycle or
+        drains into one, which no layering can schedule.  ``(layers < 0) &
+        mask`` counts the second kind and is how you detect a cycle.
     nlayers : int
     """
     idxs_ds = np.ascontiguousarray(idxs_ds, dtype=np.int32)
@@ -658,7 +661,10 @@ def layering_cfds(idxs_ds):
     Returns
     -------
     layers : ndarray of int32
-        Layer index per cell, ``-1`` outside the network.
+        Layer index per cell.  ``-1`` means the cell has no layer, for one of
+        two reasons: it is outside the network, or it sits in a cycle or
+        drains into one, which no layering can schedule.  ``(layers < 0) &
+        mask`` counts the second kind and is how you detect a cycle.
     nlayers : int
     """
     idxs_ds = np.ascontiguousarray(idxs_ds, dtype=np.int32)
@@ -678,7 +684,10 @@ def layering_alap(idxs_ds, bsn=None):
     Returns
     -------
     layers : ndarray of int32
-        Layer index per cell, ``-1`` outside the network.
+        Layer index per cell.  ``-1`` means the cell has no layer, for one of
+        two reasons: it is outside the network, or it sits in a cycle or
+        drains into one, which no layering can schedule.  ``(layers < 0) &
+        mask`` counts the second kind and is how you detect a cycle.
     nlayers : int
     """
     idxs_ds = np.ascontiguousarray(idxs_ds, dtype=np.int32)

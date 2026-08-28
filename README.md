@@ -160,6 +160,14 @@ From the paper's benchmark on the full 90 m network (22.2 billion cells,
 The structures are computed once from the static D8 field and reused without
 limit.
 
+Those rankings come from the paper's C run at continental scale. This package
+is numba over numpy at a much smaller size, and it does not reproduce them
+term for term: on a 16-million-cell grid here, pull loses to the serial
+sequence because building and reading the donor table costs more than ten
+threads save, and push under `cfds` is the fastest parallel form. The
+structures are the same; which one wins depends on your machine and your grid,
+so measure with `benchmark.py` before choosing.
+
 ## Install
 
 ```sh
@@ -217,8 +225,8 @@ python benchmark.py     # serial vs threaded at several grid sizes
 
 ## Example data
 
-`data/dir_example.tif` is the example basin of the paper: 614 × 292 cells at
-3 arc-seconds, 93,432 valid, 731 km², cut from
+`data/dir_example.tif` is the example basin of the paper: 292 rows by 614
+columns at 3 arc-seconds, 93,432 valid cells, 731 km², cut from
 [MERIT Hydro](https://doi.org/10.1029/2019WR024873) (Yamazaki et al., 2019).
 The GeoJSON files are the basin boundary and the outlet.
 
@@ -266,8 +274,12 @@ number is exactly right for the data it was given.
 So the only question is whether your clip contains the whole catchment of the
 cells you care about. A basin does, by definition: clipping one out of the
 bundled example and recomputing reproduces every cell to the last decimal. A
-rectangle does for 98% of the cells it keeps. For the other 2%, the ones along
-the channel it cut, the number describes your rectangle rather than the world.
+rectangle does for most of them. The cells it gets wrong are exactly the ones
+with catchment outside the cut, so the share depends on how much drainage the
+cut intercepts rather than on any fixed number: across thirteen rectangles
+through the bundled example, between 92.7% and 99.6% of the kept cells came
+back identical, median 97.8%. For the rest, the ones below a channel the cut
+crossed, the number describes your rectangle rather than the world.
 
 Clip a rectangle when the area you kept is what you are studying. Clip whole
 basins, or read the values out of MERIT-DrainAttr, when the numbers have to
