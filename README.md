@@ -167,6 +167,12 @@ products are on Zenodo, as per-region GeoTIFFs for 65 regions:
 
 ## Acknowledgements
 
+**MERIT Hydro** (Yamazaki et al., 2019;
+[10.1029/2019WR024873](https://doi.org/10.1029/2019WR024873)) provides the
+flow-direction field everything here traverses: the example basin is cut from
+it, and the global products are built on its 90 m network. The bundled excerpt
+keeps its CC BY-NC 4.0 terms.
+
 The representation this package works on comes from
 [pyflwdir](https://github.com/Deltares/pyflwdir) (D. Eilander, Deltares and the
 Institute for Environmental Studies, Vrije Universiteit Amsterdam; MIT licence;
