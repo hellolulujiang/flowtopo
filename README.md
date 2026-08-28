@@ -258,9 +258,10 @@ every push; the badge at the top links to those runs.
 
 ## Citing
 
-See [`CITATION.cff`](CITATION.cff). The companion manuscript is
-*MERIT-FlowTopo v1.0: a reusable computational foundation for hyperresolution
-hydrology on the global 90 m drainage network* (Jiang et al., in preparation).
+The companion manuscript is *MERIT-FlowTopo v1.0: a reusable computational
+foundation for hyperresolution hydrology on the global 90 m drainage network*
+(Jiang et al., in preparation). A citation file will be added once it appears;
+until then, cite the manuscript.
 
 ## Licence
 
