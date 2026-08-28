@@ -132,10 +132,13 @@ decomposed basin, O(N) space.
 
 | kernel | shape | manners |
 | --- | --- | --- |
-| upstream drainage area | many-to-one accumulation, linear | serial, pull, push, atomic_push |
-| distance to outlet | one-to-one propagation | serial, and any layering |
-| longest upstream path | many-to-one maximum, linear | serial, pull, push, atomic_push |
-| Strahler stream order | many-to-one, non-linear | serial, pull, push |
+| `upstream_area` | many-to-one accumulation, linear | serial, pull, push, atomic_push |
+| `distance_to_outlet` | one-to-one propagation | serial, and any layering |
+| `longest_upstream_path` | many-to-one maximum, linear | serial, pull, push, atomic_push |
+| `strahler_order` | many-to-one, non-linear | serial, pull, push |
+
+All four are one pass over a structure: O(N) time for the serial form, O(N/P +
+L) threaded over L layers, O(N) space beyond the structure itself.
 
 `push` writes into the receiver and is correct only where no two cells of a
 layer share one, that is, under the conflict-free downstream layering.
@@ -143,14 +146,117 @@ layer share one, that is, under the conflict-free downstream layering.
 `np.maximum.at`. `pull` gathers from the donors, so a cell writes only to
 itself; it needs the upstream adjacency table.
 
+### `upstream_area`
+
+Accumulates a per-cell quantity downstream. Keeps the dtype of `cell_area`:
+float32 stops resolving one 90 m cell once the running total passes about
+1e5 km², so pass float64 on a continental network.
+
+### `distance_to_outlet`
+
+Cumulative along-stream distance to the pit. One-to-one, so each cell is
+written once and any layering is safe. Needs a `d2u` traversal, since a
+receiver must be finished before its donors.
+
+### `longest_upstream_path`
+
+Propagates the maximum distance-to-outlet seen upstream, then subtracts the
+cell's own. Takes the output of `distance_to_outlet`.
+
+### `strahler_order`
+
+Two branches of equal order meeting raise the order by one; otherwise the
+largest incoming order carries through. A comparison and a count rather than
+an addition, so no single atomic expresses it: under a layering the
+conflict-free push is the one that runs it in a single pass with no atomic.
+
+*Origin:* Strahler (1957), Trans. Am. Geophys. Union 38:913–920.
+
+## Supporting structures
+
+### `core.d8_to_downstream`
+
+The flattening of the D8 raster into one downstream pointer per cell. 247 is
+nodata; a second nodata code can be given for a grid that uses another. A cell
+draining off the grid, into nodata, or nowhere becomes a pit.
+
+*Origin:* [pyflwdir](https://github.com/Deltares/pyflwdir) (Eilander et al.,
+2021, Deltares).
+*Complexity:* O(N) time, O(N) space.
+
+### `core.unknown_codes`
+
+Counts codes the convention does not define. A non-empty result usually means
+the grid follows TauDEM or GRASS, which number their directions 1 to 8; read
+as powers of two, every undefined code becomes a pit.
+
+### `core.upstream_count`, `core.upstream_table`
+
+Donors per cell, and the adjacency table the pull manner reads. The table
+costs `N × K` entries, K being the largest fan-in, at most 8 for D8.
+
+*Origin:* [pyflwdir](https://github.com/Deltares/pyflwdir) (Eilander et al.,
+2021, Deltares), for the count and its sentinel convention.
+*Complexity:* O(N + E) time, O(N·K) space.
+
+### `core.basin_labels`
+
+One-based basin id per cell, from a `d2u` pass: a pit opens a basin and every
+other cell copies its receiver's label. Required by the as-late-as-possible
+layering and by both partitions.
+
+*Complexity:* O(N) time, O(N) space.
+
+### `geodist`
+
+Metres per degree from the WGS-84 series expansion, and the spherical area of
+a lat-lon pixel. Checked against pyproj: metres per degree agree to 1e-5, the
+series' own accuracy, and cell area matches the spherical integral exactly.
+
+### `raster`
+
+`read_geotiff` and `write_geotiff`, through rasterio. `GridHeader` carries the
+shape, dtype, nodata and geotransform.
+
+### `layering.Decomposition`, `layering.reverse_layers`
+
+A layering is one layer index per cell; the kernels need the opposite view,
+the members of each layer. `Decomposition` holds that as one flat array of
+cell indices plus the offsets that cut it into layers, so a layer is a
+zero-copy slice, and cells inside a layer stay in ascending index order.
+`reverse_layers` flips a `u2d` layering into a `d2u` one for the
+downstream-propagating kernel.
+
+*Complexity:* O(N log N) to build, one stable sort; O(N) space.
+
+### `api.FlowTopo`
+
+The front end. Wraps a D8 network, builds each structure on first use and
+caches it. Cached arrays are handed out read-only, so a caller cannot damage
+the cache by writing to a result.
+
+## Threaded forms
+
+`flowtopo.parallel` compiles the layer traversal with numba `prange`:
+`upstream_area`, `distance_to_outlet` and `longest_upstream_path`, plus
+`seq_bfs_from_pit`, which expands each frontier across threads. Requires
+numba; without it the module raises rather than pretending to use threads.
+
 ## Locality metrics
 
 Feeds the interleaved (cell, receiver) access stream through a simulated N-way
 set-associative LRU cache, so the two arrays a traversal reads compete for one
 cache. Default geometry: 32 KB 8-way L1, 1 MB 16-way L2, 35.75 MB 11-way L3.
 
-Reported per ordering: stride statistics, row-jump fraction, cache-line reuse
-distance, receiver distance, and the simulated miss rate per level. Per
-layering: intra-layer span, gap statistics, cache-line footprint, receiver
-distance, and the miss rate on the flattened layer order, so the two are
-directly comparable.
+`serial_locality` reports, for one ordering: stride statistics, the row-jump
+fraction, cache-line reuse distance, receiver distance, and the simulated miss
+rate per level. `parallel_locality` reports, for one layering: intra-layer
+span, gap statistics, cache-line footprint, receiver distance, and the miss
+rate on the flattened layer order, so the two are directly comparable.
+
+The simulator is checked against an LRU written independently: the two agree
+exactly on the example basin and on random access sequences. Six further tests
+pin it to cases with a known answer, including the associativity boundary —
+eight lines per set fit, the ninth thrashes.
+
+*Complexity:* O(A · W) time for A accesses and W ways, O(capacity) space.

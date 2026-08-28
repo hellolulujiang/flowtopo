@@ -220,10 +220,11 @@ python benchmark.py     # serial vs threaded at several grid sizes
 `data/dir_example.tif` is the example basin of the paper: 614 × 292 cells at
 3 arc-seconds, 93,432 valid, 731 km², cut from
 [MERIT Hydro](https://doi.org/10.1029/2019WR024873) (Yamazaki et al., 2019).
-The GeoJSON files are the basin boundary and the outlet. Any D8 GeoTIFF in the
-same convention works — codes as powers of two clockwise from east, 0 and 255
-terminal — and the file's own nodata value is honoured, which matters because
-255 is a terminal here rather than nodata:
+The GeoJSON files are the basin boundary and the outlet.
+
+Any D8 GeoTIFF in the same convention works: codes are powers of two clockwise
+from east, with 0 and 255 terminal. The file's own nodata value is honoured
+too, which matters because 255 means a terminal here, not nodata.
 
 ```sh
 python example.py --data my_dir.tif
@@ -238,11 +239,11 @@ GeoTIFFs for 65 regions.
 ### The structures
 
 **MERIT-FlowTopo** ([10.5281/zenodo.20653059](https://doi.org/10.5281/zenodo.20653059))
-is the product: the traversal structures themselves, computed once from the
-static D8 field. For every region it holds the depth-first sequence, the
-conflict-free downstream and as-late-as-possible layerings, and the subbasin
-partition; Region 43 (South China) carries all eight, so the alternatives can
-be compared somewhere. About 978 GB uncompressed, 49 GB compressed.
+holds the traversal structures themselves. Every region carries the
+depth-first sequence, the conflict-free downstream and as-late-as-possible
+layerings, and the subbasin partition; Region 43 (South China) carries all
+eight, so the alternatives can be compared somewhere. 978 GB uncompressed,
+49 GB compressed.
 
 [![](docs/media/global_orderings.png)](docs/media/global_orderings.png)
 
@@ -260,25 +261,24 @@ run becomes a read.
 ### What the structures compute
 
 **MERIT-DrainAttr** ([10.5281/zenodo.20686665](https://doi.org/10.5281/zenodo.20686665))
-is the four kernels run over those structures — a baseline, so the variables
-almost everyone wants do not have to be recomputed either.
+is the four kernels run over those structures: a baseline, so the variables
+almost everyone wants need not be recomputed either.
 
 [![](docs/media/kernel_products.png)](docs/media/kernel_products.png)
 
 Flow length downstream, flow length upstream and Strahler stream order for
 every region; upstream drainage area for Region 43 only, since MERIT Hydro
-already distributes it globally. About 622 GB uncompressed, 60 GB compressed.
+already distributes it globally. 622 GB uncompressed, 60 GB compressed.
 
-Anything else — a different accumulation, a routing state, a variable nobody
-has asked for yet — is one pass over a structure you already have, which is
-why the structures rather than the variables are what gets released.
+Anything else is one pass over a structure you already have: a different
+accumulation, a routing state, a variable nobody has asked for yet. That is
+why the release is the structures and not the variables.
 
 ### The input partition
 
 **MERIT-FullBasin** ([10.5281/zenodo.20344113](https://doi.org/10.5281/zenodo.20344113))
-divides the network into the 65 hydrologically independent regions that
-everything above is organised by. It comes from the companion dataset, not
-from this work.
+divides the network into the 65 hydrologically independent regions everything
+above is organised by. It comes from the companion dataset, not from here.
 
 ## Acknowledgements
 
@@ -327,13 +327,14 @@ clone verifies itself:
 pytest
 ```
 
-86 tests: every ordering, layering, partition, kernel and manner is
-cross-checked on the example basin, including the write-conflict counts;
-degenerate inputs — an empty grid, a lone cell, networks with cycles; and the
-API's contracts — cached arrays are read-only, repeated calls agree bit for
-bit, and accumulation keeps the precision it was given. The
-same tests, and `example.py` end to end, run on Python 3.10, 3.11 and 3.12 on
-every push; the badge at the top links to those runs.
+86 tests. Every ordering, layering, partition, kernel and manner is
+cross-checked on the example basin, write-conflict counts included. Degenerate
+inputs get their own: an empty grid, a lone cell, networks with cycles. So do
+the API's promises — cached arrays are read-only, repeated calls agree bit for
+bit, accumulation keeps the precision it was given.
+
+Those tests and `example.py` run on Python 3.10, 3.11 and 3.12 on every push.
+The badge at the top links to the runs.
 
 ## Contact
 
