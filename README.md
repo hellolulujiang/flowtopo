@@ -229,27 +229,45 @@ python example.py --data my_dir.tif
 
 ## Global products
 
-This repository holds the method and one example basin. The global 90 m
-products are on Zenodo, as per-region GeoTIFFs for 65 regions.
+This repository holds the method and one example basin. Applied to the whole
+90 m MERIT Hydro network, it produces two Zenodo records, both as per-region
+GeoTIFFs for 65 regions.
+
+### The structures
+
+**MERIT-FlowTopo** ([10.5281/zenodo.20653059](https://doi.org/10.5281/zenodo.20653059))
+is the product: the traversal structures themselves, computed once from the
+static D8 field. For every region it holds the depth-first sequence, the
+conflict-free downstream and as-late-as-possible layerings, and the subbasin
+partition; Region 43 (South China) carries all eight, so the alternatives can
+be compared somewhere. About 978 GB uncompressed, 49 GB compressed.
+
+Because the D8 field does not change, these are computed once and reused
+without limit. That is the point: a cost every tool currently pays on every
+run becomes a read.
+
+### What the structures compute
+
+**MERIT-DrainAttr** ([10.5281/zenodo.20686665](https://doi.org/10.5281/zenodo.20686665))
+is the four kernels run over those structures — a baseline, so the variables
+almost everyone wants do not have to be recomputed either.
 
 [![](docs/media/kernel_products.png)](docs/media/kernel_products.png)
 
-*The four kernels computed over the whole 90 m network and released as
-MERIT-DrainAttr: (a) flow length downstream, (b) flow length upstream,
-(c) Strahler stream order, (d) upstream drainage area.*
+Flow length downstream, flow length upstream and Strahler stream order for
+every region; upstream drainage area for Region 43 only, since MERIT Hydro
+already distributes it globally. About 622 GB uncompressed, 60 GB compressed.
 
+Anything else — a different accumulation, a routing state, a variable nobody
+has asked for yet — is one pass over a structure you already have, which is
+why the structures rather than the variables are what gets released.
 
-* **MERIT-FlowTopo** ([10.5281/zenodo.20653059](https://doi.org/10.5281/zenodo.20653059)) —
-  the precomputed structures: depth-first sequence, conflict-free downstream
-  and as-late-as-possible layerings, subbasin partition; all eight structures
-  for Region 43 (South China). About 978 GB uncompressed, 49 GB compressed.
-* **MERIT-DrainAttr** ([10.5281/zenodo.20686665](https://doi.org/10.5281/zenodo.20686665)) —
-  the four maps above: flow length downstream, flow length upstream and
-  Strahler stream order for every region, and upstream drainage area for
-  Region 43, since MERIT Hydro already distributes it globally.
-  About 622 GB uncompressed, 60 GB compressed.
-* **MERIT-FullBasin** ([10.5281/zenodo.20344113](https://doi.org/10.5281/zenodo.20344113)) —
-  the partition into the 65 regions.
+### The input partition
+
+**MERIT-FullBasin** ([10.5281/zenodo.20344113](https://doi.org/10.5281/zenodo.20344113))
+divides the network into the 65 hydrologically independent regions that
+everything above is organised by. It comes from the companion dataset, not
+from this work.
 
 ## Acknowledgements
 
