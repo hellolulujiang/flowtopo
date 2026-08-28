@@ -65,6 +65,11 @@ A layering spreads work across threads that share memory. Splitting the network
 across processors needs a second cut, along the drainage hierarchy, so that no
 value crosses a subregion boundary while a kernel runs.
 
+Set `n_parts` to the number of processors: one subregion each, so a subregion's
+working set stays in its own memory. The paper's benchmark uses four, because
+the server has four Xeon Platinum 8270 processors, each a NUMA node with 26
+cores, and runs about 13 threads inside each subregion.
+
 | basin-level | subbasin-level |
 | :---: | :---: |
 | [![](docs/media/part_basin.png)](docs/media/part_basin.png) | [![](docs/media/part_subbasin.png)](docs/media/part_subbasin.png) |

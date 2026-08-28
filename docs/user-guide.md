@@ -171,6 +171,10 @@ that no value crosses a subregion boundary mid-kernel:
 part, load = topo.partition(n_parts=4, level="subbasin")
 ```
 
+Set `n_parts` to the number of processors, one subregion each. The paper's
+benchmark uses four, one per NUMA node of a four-socket Xeon Platinum 8270
+server, with about 13 threads working inside each subregion.
+
 `part` holds a subregion index per cell, `-1` outside the network. With
 `level="basin"` whole basins are assigned to subregions by cell count; a basin
 is never split, so one dominant basin leaves the other processors idle. The

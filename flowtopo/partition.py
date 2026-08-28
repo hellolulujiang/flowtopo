@@ -80,7 +80,9 @@ def partition(topo, n_parts=4, level="subbasin"):
     ----------
     topo : FlowTopo
     n_parts : int
-        Number of subregions, normally the number of processors.
+        Number of subregions. Set it to the number of processors, one subregion
+        each, so a subregion's working set stays in that processor's own
+        memory; threads then divide the work inside a subregion.
     level : {"basin", "subbasin"}
         ``"basin"`` keeps every basin whole. ``"subbasin"`` decomposes any
         basin larger than one subregion's share along its mainstem.
