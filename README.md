@@ -362,8 +362,10 @@ clone verifies itself:
 pytest
 ```
 
-86 tests. Every ordering, layering, partition, kernel and manner is
-cross-checked on the example basin, write-conflict counts included. Degenerate
+150 tests. Every ordering, layering, partition, kernel and manner is
+cross-checked on the example basin, write-conflict counts included. The
+structures are checked against their definitions directly: an ordering is a
+topological sort, a layer is an antichain, a receiver comes after its donors. Degenerate
 inputs get their own: an empty grid, a lone cell, networks with cycles. So do
 the API's promises — cached arrays are read-only, repeated calls agree bit for
 bit, accumulation keeps the precision it was given.

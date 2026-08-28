@@ -22,7 +22,10 @@ the same input, that only the conflict-free downstream layering has zero
 receiver conflicts, and that a push under the other two layerings loses
 writes. `tests/test_edge_cases.py` covers degenerate inputs: an empty grid, a
 lone cell, and networks with cycles, none of which may raise.
-`tests/test_contracts.py` covers what the API promises a caller: cached arrays
+`tests/test_structures.py` asserts what a structure is: an ordering is a
+topological sort, a layer is an antichain, a decomposition covers every cell
+once in dependency order. `tests/test_contracts.py` covers what the API
+promises a caller: cached arrays
 are read-only, repeated calls agree bit for bit, a kernel does not touch its
 arguments, and accumulation keeps the dtype it was handed.
 
