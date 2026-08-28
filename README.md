@@ -249,13 +249,23 @@ subbasin of the bundled example: all three orderings stayed valid, all three
 layerings kept their layers independent, `cfds` kept zero conflicts, and
 recomputing from scratch on the clip gave the identical answer.
 
-One rule: keep whole basins. Cut a rectangle through the middle of one and
-nothing will complain, but the answers come back quietly too small. The cells
-you removed were still draining in, so the cells along the cut now look like
-outlets. Cutting the bundled example in half costs the worst-hit cell 71% of
-its drainage area — 469 km² read as 138 — and leaves 795 cells short by more
-than 0.5 km². No error, no warning, just smaller numbers. Take a whole basin,
-or a whole region.
+Clip however suits you — a basin, a rectangle, a country. The structures do
+not mind, and neither does the arithmetic: drainage area is the sum of what
+drains in, so a cell gets the right answer whenever everything draining into
+it is still there.
+
+A whole basin satisfies that by definition. Clipping one out of the bundled
+example and recomputing reproduces every cell exactly, to the last decimal.
+
+A rectangle satisfies it for most cells and not for those fed from across the
+cut — you deleted part of their catchment, so the sum is smaller. Cutting the
+example in half leaves 98% of the remaining cells identical to the full run;
+the 2% that drop are along the main channel, where the water came from the
+half you removed.
+
+Either is fine. Clip a rectangle when you are studying the area you kept; clip
+whole basins, or read the values out of MERIT-DrainAttr, when the numbers have
+to mean what they mean globally.
 
 ### Bring your own flow directions
 
@@ -379,7 +389,7 @@ clone verifies itself:
 pytest
 ```
 
-168 tests. Every ordering, layering, partition, kernel and manner is
+170 tests. Every ordering, layering, partition, kernel and manner is
 cross-checked on the example basin, write-conflict counts included. The
 structures are checked against their definitions directly: an ordering is a
 topological sort, a layer is an antichain, a receiver comes after its

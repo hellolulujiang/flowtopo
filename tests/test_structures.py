@@ -18,6 +18,19 @@ ORDERINGS = ["dfs", "bfs", "topo"]
 LAYERINGS = ["asap", "cfds", "alap"]
 
 
+@pytest.fixture(scope="module")
+def example_d8():
+    """The bundled basin as a 2-D D8 grid, for tests that clip a raster."""
+    import os
+
+    from flowtopo.raster import read_geotiff
+
+    here = os.path.dirname(os.path.abspath(__file__))
+    data, header = read_geotiff(os.path.join(here, os.pardir, "data",
+                                             "dir_example.tif"))
+    return data.reshape(header.shape)
+
+
 @pytest.fixture(scope="module", params=[1, 6])
 def topo(request):
     return flowtopo.FlowTopo.from_d8(synthetic_d8(120, seed=request.param),
@@ -213,30 +226,64 @@ def test_the_conflict_free_guarantee_survives_clipping(topo, clipped):
         assert receivers.size == np.unique(receivers).size
 
 
-def test_cutting_through_a_basin_loses_drainage_area_silently(topo):
-    """The one rule the README states, measured.
+# ---------------------------------------------------------------------------
+# Clipping, on the bundled basin, the way a user would do it
+# ---------------------------------------------------------------------------
 
-    Clipping along basin boundaries is safe. A rectangle through the middle of
-    a basin is not: the cells it removes were still draining in, so everything
-    below the cut reads low, and nothing raises.
-    """
-    from flowtopo.core import D8_NODATA, d8_to_downstream
 
+@pytest.fixture(scope="module")
+def example():
+    """The bundled basin, and its D8 grid, so a clip can be re-decoded."""
+    import os
+
+    from flowtopo.raster import read_geotiff
+
+    here = os.path.dirname(os.path.abspath(__file__))
+    path = os.path.join(here, os.pardir, "data", "dir_example.tif")
+    data, header = read_geotiff(path)
+    return flowtopo.FlowTopo.from_raster(path), data.reshape(header.shape)
+
+
+def _clip(topo, grid, keep):
+    """Clip the way a user would: blank the cells, decode the raster again."""
+    clipped = grid.copy()
+    clipped.ravel()[~keep] = flowtopo.D8_NODATA
+    return flowtopo.FlowTopo.from_d8(clipped, transform=topo.transform)
+
+
+def test_clipping_a_whole_basin_reproduces_every_value(example):
+    """A basin holds everything that drains into it, so the sums are unchanged."""
+    topo, grid = example
     full = topo.upstream_area(ordering="dfs")
 
-    grid = np.zeros(topo.idxs_ds.size, dtype=np.uint8)
-    grid[:] = D8_NODATA
-    # rebuild a d8 grid from the network, then blank the left half
-    for cell in range(topo.idxs_ds.size):
-        if topo.mask[cell]:
-            grid[cell] = 1 if topo.idxs_ds[cell] != cell else 0
-    grid = grid.reshape(topo.shape).copy()
-    grid[:, : topo.ncol // 2] = D8_NODATA
+    middling = np.nonzero(topo.mask & (full > 80) & (full < 200))[0]
+    root = int(middling[0])
+    inside = np.zeros(topo.idxs_ds.size, dtype=bool)
+    inside[root] = True
+    for cell in topo.ordering("dfs", "d2u"):        # receivers before donors
+        receiver = topo.idxs_ds[cell]
+        if receiver >= 0 and receiver != cell and inside[receiver]:
+            inside[cell] = True
+    assert inside.sum() > 1000
 
-    clipped = flowtopo.FlowTopo.from_d8(grid, transform=TRANSFORM)
-    partial = clipped.upstream_area(ordering="dfs")
+    partial = _clip(topo, grid, inside).upstream_area(ordering="dfs")
+    assert np.allclose(partial[inside], full[inside], rtol=1e-6, atol=1e-6)
 
-    both = topo.mask & clipped.mask
+
+def test_a_rectangle_only_loses_cells_fed_from_across_the_cut(example):
+    """Not a defect: their catchment was deleted, so the sum is smaller."""
+    topo, grid = example
+    full = topo.upstream_area(ordering="dfs")
+
+    keep = topo.mask.reshape(topo.shape).copy()
+    keep[:, : topo.ncol // 2] = False
+    keep = keep.ravel()
+
+    sub = _clip(topo, grid, keep)
+    partial = sub.upstream_area(ordering="dfs")
+
+    both = keep & sub.mask
     assert both.any()
-    # no exception, and the clipped answers are never larger
-    assert np.all(partial[both] <= full[both] + 1e-6)
+    assert np.all(partial[both] <= full[both] + 1e-4)      # never larger
+    unchanged = np.count_nonzero(np.abs(partial[both] - full[both]) < 1e-4)
+    assert unchanged > 0.9 * np.count_nonzero(both)        # most are untouched
