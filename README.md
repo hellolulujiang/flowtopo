@@ -1,5 +1,6 @@
 # FlowTopo
 
+[![tests](https://github.com/hellolulujiang/flowtopo/actions/workflows/tests.yml/badge.svg)](https://github.com/hellolulujiang/flowtopo/actions/workflows/tests.yml)
 [![licence: MIT](https://img.shields.io/badge/licence-MIT-blue.svg)](LICENSE)
 
 Orderings, layerings and partitions for D8 flow networks, in Python.
@@ -245,8 +246,8 @@ clone verifies itself:
 pytest
 ```
 
-27 tests: every ordering, layering, kernel and manner is cross-checked on the
-example basin, including the write-conflict counts.
+33 tests: every ordering, layering, partition, kernel and manner is
+cross-checked on the example basin, including the write-conflict counts.
 
 ## Citing
 
