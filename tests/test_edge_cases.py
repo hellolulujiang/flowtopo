@@ -148,21 +148,25 @@ def test_partition_rejects_a_meaningless_part_count(lone_pit, n_parts):
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.parametrize("code", [255, 0, 5])
-def test_the_grids_own_nodata_code_is_honoured(tmp_path, code):
-    """255 is a valid terminal in this convention, so a file must be believed."""
+@pytest.mark.parametrize("nodata_code,terminal", [(255, 0), (0, 255), (5, 0)])
+def test_the_grids_own_nodata_code_is_honoured(tmp_path, nodata_code, terminal):
+    """255 is a valid terminal in this convention, so a file must be believed.
+
+    The terminal code has to differ from the nodata code: a grid that uses one
+    value for both cannot say which cells are outside the network.
+    """
     from flowtopo.raster import GridHeader, write_geotiff
 
-    grid = np.full((4, 4), D8_NODATA, dtype=np.uint8)
-    grid[1, :3] = [1, 1, 0]                 # a three-cell chain to a pit
-    grid[grid == D8_NODATA] = code          # relabel nodata
+    grid = np.full((4, 4), nodata_code, dtype=np.uint8)
+    grid[1, :3] = [1, 1, terminal]          # a three-cell chain to a pit
 
     path = tmp_path / "dir.tif"
     write_geotiff(str(path), grid.ravel(),
-                  GridHeader(ncol=4, nrow=4, dtype="uint8", nodata=float(code),
-                             transform=TRANSFORM))
+                  GridHeader(ncol=4, nrow=4, dtype="uint8",
+                             nodata=float(nodata_code), transform=TRANSFORM))
     topo = flowtopo.FlowTopo.from_raster(str(path))
     assert topo.ncells == 3
+    assert topo.nbasins == 1
 
 
 def test_a_cell_draining_into_nodata_becomes_a_pit():
