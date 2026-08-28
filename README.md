@@ -17,7 +17,7 @@ the flow-direction grid and used by any computation over the network:
   threads;
 * **two spatial partitions** — independent subregions, several processors.
 
-Four kernels come with the package to exercise them — upstream drainage area,
+Four kernels come with the package to exercise them: upstream drainage area,
 distance to outlet, longest upstream path, Strahler stream order. They are
 tests of the structures, not the point of the package: each runs on every
 structure and the results are cross-checked.
@@ -239,7 +239,8 @@ hydrological region, ready to read. To compute anything on them you also need
 the flow-direction grid they are indexed against, and that is **not
 redistributed here**: get it from its authors at
 <http://hydro.iis.u-tokyo.ac.jp/~yamadai/MERIT_Hydro/>, under the CC BY-NC 4.0
-terms they set. The release states which MERIT Hydro tiles each region covers.
+terms they set. <https://fullhydro.org> has the download and the table saying
+which MERIT Hydro tiles each region covers.
 
 You do not need a whole region. Clip a basin out of one and the structures
 clip with it: filter a released sequence to the cells you kept and it is still
@@ -249,7 +250,7 @@ subbasin of the bundled example: all three orderings stayed valid, all three
 layerings kept their layers independent, `cfds` kept zero conflicts, and
 recomputing from scratch on the clip gave the identical answer.
 
-Clip however suits you — a basin, a rectangle, a country. Nothing breaks, and
+Clip however suits you: a basin, a rectangle, a country. Nothing breaks, and
 nothing is approximated. Two things are worth keeping apart.
 
 **The structures describe the network you hand over.** Clip it and the
@@ -258,16 +259,15 @@ independent cells, still zero conflicts under `cfds`. Any clip, no exceptions.
 
 **A kernel answers a question about that same network.** Drainage area asks
 how much area drains into a cell, and *how much area* is however much you
-supplied. Clip a catchment in half and the answer halves — not because the
-computation slipped, but because you asked about a smaller catchment. The
+supplied. Clip a catchment in half and the answer halves, not because the
+computation slipped but because you asked about a smaller catchment. The
 number is exactly right for the data it was given.
 
 So the only question is whether your clip contains the whole catchment of the
 cells you care about. A basin does, by definition: clipping one out of the
 bundled example and recomputing reproduces every cell to the last decimal. A
-rectangle does for 98% of the cells it keeps, and for the other 2% — those
-along the channel it cut — the number describes your rectangle rather than the
-world.
+rectangle does for 98% of the cells it keeps. For the other 2%, the ones along
+the channel it cut, the number describes your rectangle rather than the world.
 
 Clip a rectangle when the area you kept is what you are studying. Clip whole
 basins, or read the values out of MERIT-DrainAttr, when the numbers have to
@@ -295,7 +295,7 @@ build yourself and a region you download are the same thing.
 
 Work a region or a basin at a time rather than the globe. A region encloses
 only complete basins and stays within 38° × 38°, which keeps its cell indices
-inside 32-bit integers — the reason this package uses int32 throughout. The
+inside 32-bit integers, which is why this package uses int32 throughout. The
 region boundaries are in MERIT-FullBasin, below.
 
 ## Global products
@@ -401,7 +401,7 @@ structures are checked against their definitions directly: an ordering is a
 topological sort, a layer is an antichain, a receiver comes after its
 donors, and all of that survives clipping a basin out of a region. Degenerate
 inputs get their own: an empty grid, a lone cell, networks with cycles. So do
-the API's promises — cached arrays are read-only, repeated calls agree bit for
+the API's promises: cached arrays are read-only, repeated calls agree bit for
 bit, accumulation keeps the precision it was given.
 
 Those tests and `example.py` run on Python 3.10, 3.11 and 3.12 on every push.
@@ -409,8 +409,8 @@ The badge at the top links to the runs.
 
 ## Contact
 
-Questions, problems and suggestions are welcome by email —
-<lulu_jiang@pku.edu.cn> — or as a
+Questions, problems and suggestions are welcome by email at
+<lulu_jiang@pku.edu.cn>, or as a
 [GitHub issue](https://github.com/hellolulujiang/flowtopo/issues). Email is the
 surer way to reach us.
 
