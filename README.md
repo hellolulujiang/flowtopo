@@ -292,6 +292,13 @@ bit, and accumulation keeps the precision it was given. The
 same tests, and `example.py` end to end, run on Python 3.10, 3.11 and 3.12 on
 every push; the badge at the top links to those runs.
 
+## Contact
+
+Questions, problems and suggestions are welcome by email —
+<lulu_jiang@pku.edu.cn> — or as a
+[GitHub issue](https://github.com/hellolulujiang/flowtopo/issues). Email is the
+surer way to reach us.
+
 ## Citing
 
 The companion manuscript is *MERIT-FlowTopo v1.0: a reusable computational
