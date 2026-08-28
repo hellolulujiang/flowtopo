@@ -88,10 +88,12 @@ working set stays in its own memory. The paper's benchmark uses four, because
 the server has four Xeon Platinum 8270 processors, each a NUMA node with 26
 cores, and runs about 13 threads inside each subregion.
 
-| basin-level<br>`level="basin"` | subbasin-level<br>`level="subbasin"` |
-| :---: | :---: |
-| [![](docs/media/part_basin.png)](docs/media/part_basin.png) | [![](docs/media/part_subbasin.png)](docs/media/part_subbasin.png) |
-| whole basins assigned to subregions, weighted by cell count | a basin too large for one subregion is cut along its mainstem |
+[![](docs/media/partition_schematic.png)](docs/media/partition_schematic.png)
+
+*Two basins mapped onto two subregions.* `level="basin"` keeps each basin
+whole, so the 62-cell basin and the 11-cell basin cannot be balanced.
+`level="subbasin"` walks up the dominant basin's mainstem, and a tributary
+subtree moves to the lighter subregion.
 
 Whole basins cannot be split, so one large basin leaves the other processors
 idle. The bundled example is a single basin, which makes the point exactly:
@@ -241,6 +243,15 @@ static D8 field. For every region it holds the depth-first sequence, the
 conflict-free downstream and as-late-as-possible layerings, and the subbasin
 partition; Region 43 (South China) carries all eight, so the alternatives can
 be compared somewhere. About 978 GB uncompressed, 49 GB compressed.
+
+[![](docs/media/global_orderings.png)](docs/media/global_orderings.png)
+
+[![](docs/media/global_layerings.png)](docs/media/global_layerings.png)
+
+[![](docs/media/global_partitions.png)](docs/media/global_partitions.png)
+
+*The eight structures over the whole network: three serial orderings, three
+parallel layerings, two spatial partitions.*
 
 Because the D8 field does not change, these are computed once and reused
 without limit. That is the point: a cost every tool currently pays on every
