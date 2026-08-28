@@ -265,6 +265,12 @@ rasters.
 The three layerings, the conflict-free downstream rule, the propagation
 manners, the locality metrics and the benchmark drivers are this project's own.
 
+**Claude** (Anthropic) helped prepare this repository: the Python
+implementation, the tests, the documentation and the packaging were drafted
+with it and checked by the authors, and the commit history records where. The
+structures, the algorithms and the results they produce are the authors' own
+work, described in the companion manuscript.
+
 ## Verification
 
 Expected outputs for the example basin are stored with the tests, so a fresh
