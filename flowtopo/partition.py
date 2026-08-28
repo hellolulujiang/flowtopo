@@ -30,15 +30,11 @@ MAINSTEM = -2
 """Marker for cells held back to the second stage."""
 
 
-def _group_by_basin(basins, mask):
-    """Cells grouped by basin in one sort: ``(labels, cells, starts)``."""
-    cells = np.nonzero(mask)[0].astype(np.int64)
-    keys = basins[cells]
-    order = np.argsort(keys, kind="stable")
-    cells = cells[order]
-    keys = keys[order]
-    labels, starts = np.unique(keys, return_index=True)
-    return labels, cells, np.append(starts, cells.size)
+def _basin_sizes(basins, mask):
+    """Cells per basin label, without grouping the cells themselves."""
+    counts = np.bincount(basins[mask])
+    labels = np.nonzero(counts)[0]
+    return labels, counts
 
 
 def _lpt(weights, n_parts):
@@ -123,24 +119,26 @@ def partition(topo, n_parts=4, level="subbasin"):
     if not mask.any():
         return part, np.zeros(n_parts, dtype=np.float64)
 
-    labels, cells, bounds = _group_by_basin(topo.basins, mask)
-    sizes = np.diff(bounds)
+    basins = topo.basins
+    labels, counts = _basin_sizes(basins, mask)
+    sizes = counts[labels]
+
+    def by_whole_basin():
+        """Assign each basin as one item, then look the answer up per cell."""
+        assign, load = _lpt(sizes, n_parts)
+        lookup = np.full(counts.size, -1, dtype=np.int32)
+        lookup[labels] = assign
+        part[mask] = lookup[basins[mask]]
+        return part, load
 
     if level == "basin":
-        assign, load = _lpt(sizes, n_parts)
-        for item in range(labels.size):
-            part[cells[bounds[item] : bounds[item + 1]]] = assign[item]
-        return part, load
+        return by_whole_basin()
 
     # ---- subbasin: decompose any basin that will not fit in one subregion --
     target = sizes.sum() / float(n_parts)
-    oversized = np.nonzero((sizes > target) & (sizes >= 3))[0]
-
-    if oversized.size == 0:
-        assign, load = _lpt(sizes, n_parts)
-        for item in range(labels.size):
-            part[cells[bounds[item] : bounds[item + 1]]] = assign[item]
-        return part, load
+    big = labels[(sizes > target) & (sizes >= 3)]
+    if big.size == 0:
+        return by_whole_basin()
 
     seq_d2u = seq_dfs_from_pit(idxs_ds)
     ones = np.ones(idxs_ds.size, dtype=np.float32)
@@ -148,11 +146,10 @@ def partition(topo, n_parts=4, level="subbasin"):
                              manner="serial", mask=mask)
     us_table, n_up = topo.upstream()
 
+    decomposed = np.isin(basins, big) & mask
     on_stem = np.zeros(idxs_ds.size, dtype=np.uint8)
-    eligible = np.zeros(idxs_ds.size, dtype=np.uint8)
-    for item in oversized:
-        members = cells[bounds[item] : bounds[item + 1]]
-        eligible[members] = 1
+    for basin in big:
+        members = np.nonzero(basins == basin)[0]
         pit = members[np.argmax(upstream[members])]
         on_stem[_mainstem(idxs_ds, pit, upstream, us_table, n_up)] = 1
 
@@ -160,29 +157,32 @@ def partition(topo, n_parts=4, level="subbasin"):
 
     root = np.full(idxs_ds.size, -1, dtype=np.int64)
     _label_subtrees(idxs_ds, np.ascontiguousarray(seq_d2u, dtype=np.int32),
-                    on_stem, eligible, root)
+                    on_stem, decomposed.view(np.uint8), root)
 
-    items, members = [], []
-    for item in range(labels.size):
-        if item in set(oversized.tolist()):
-            continue
-        group = cells[bounds[item] : bounds[item + 1]]
-        items.append(group.size)
-        members.append(group)
+    # items: every basin left whole, then every tributary subtree
+    whole = labels[~np.isin(labels, big)]
+    items = list(counts[whole])
+    members = [("basin", b) for b in whole]
 
-    labelled = root[root >= 0]
+    labelled = np.nonzero(root >= 0)[0]
     if labelled.size:
-        order = np.argsort(labelled, kind="stable")
-        cell_ids = np.nonzero(root >= 0)[0][order]
-        keys = labelled[order]
+        keys = root[labelled]
+        order = np.argsort(keys, kind="stable")
+        labelled, keys = labelled[order], keys[order]
         _, starts = np.unique(keys, return_index=True)
-        starts = np.append(starts, cell_ids.size)
+        starts = np.append(starts, labelled.size)
         for k in range(starts.size - 1):
-            group = cell_ids[starts[k] : starts[k + 1]]
+            group = labelled[starts[k] : starts[k + 1]]
             items.append(group.size)
-            members.append(group)
+            members.append(("cells", group))
 
     assign, load = _lpt(items, n_parts)
-    for item, group in enumerate(members):
-        part[group] = assign[item]
+    lookup = np.full(counts.size, -1, dtype=np.int32)
+    for item, (kind, value) in enumerate(members):
+        if kind == "basin":
+            lookup[value] = assign[item]
+        else:
+            part[value] = assign[item]
+    keep = mask & ~decomposed
+    part[keep] = lookup[basins[keep]]
     return part, load

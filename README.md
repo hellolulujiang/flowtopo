@@ -162,7 +162,8 @@ pip install -e .            # numpy + rasterio
 pip install -e ".[speed]"   # + numba, for threaded kernels
 ```
 
-Requires Python ≥ 3.9. Without numba everything still runs, in pure Python.
+Requires Python ≥ 3.10, the versions the tests run on. Without numba
+everything still runs, in pure Python.
 
 ## Quick start
 

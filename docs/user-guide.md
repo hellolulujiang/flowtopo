@@ -201,7 +201,8 @@ from flowtopo import parallel
 upa = parallel.upstream_area(topo, layering="cfds", manner="push")
 ```
 
-What to expect, measured on a synthetic 16,000,000-cell network with 10 threads:
+What to expect, measured on a synthetic 16,000,000-cell network with 10
+threads on an Apple M-series laptop:
 
 | form | median s | speedup |
 | --- | --- | --- |

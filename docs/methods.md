@@ -125,7 +125,8 @@ each confluence. The tributary subtrees become items in the assignment; the
 mainstem depends on them and is held back to a second stage, marked
 `flowtopo.MAINSTEM`.
 
-*Complexity:* O(N + E) time, O(N) space.
+*Complexity:* O(N + E + S log S) time, where S is the number of cells in a
+decomposed basin, O(N) space.
 
 ## Kernels
 
