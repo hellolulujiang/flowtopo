@@ -249,23 +249,29 @@ subbasin of the bundled example: all three orderings stayed valid, all three
 layerings kept their layers independent, `cfds` kept zero conflicts, and
 recomputing from scratch on the clip gave the identical answer.
 
-Clip however suits you — a basin, a rectangle, a country. The structures do
-not mind, and neither does the arithmetic: drainage area is the sum of what
-drains in, so a cell gets the right answer whenever everything draining into
-it is still there.
+Clip however suits you — a basin, a rectangle, a country. Nothing breaks, and
+nothing is approximated. Two things are worth keeping apart.
 
-A whole basin satisfies that by definition. Clipping one out of the bundled
-example and recomputing reproduces every cell exactly, to the last decimal.
+**The structures describe the network you hand over.** Clip it and the
+structures of the clip are exact: still a topological sort, still layers of
+independent cells, still zero conflicts under `cfds`. Any clip, no exceptions.
 
-A rectangle satisfies it for most cells and not for those fed from across the
-cut — you deleted part of their catchment, so the sum is smaller. Cutting the
-example in half leaves 98% of the remaining cells identical to the full run;
-the 2% that drop are along the main channel, where the water came from the
-half you removed.
+**A kernel answers a question about that same network.** Drainage area asks
+how much area drains into a cell, and *how much area* is however much you
+supplied. Clip a catchment in half and the answer halves — not because the
+computation slipped, but because you asked about a smaller catchment. The
+number is exactly right for the data it was given.
 
-Either is fine. Clip a rectangle when you are studying the area you kept; clip
-whole basins, or read the values out of MERIT-DrainAttr, when the numbers have
-to mean what they mean globally.
+So the only question is whether your clip contains the whole catchment of the
+cells you care about. A basin does, by definition: clipping one out of the
+bundled example and recomputing reproduces every cell to the last decimal. A
+rectangle does for 98% of the cells it keeps, and for the other 2% — those
+along the channel it cut — the number describes your rectangle rather than the
+world.
+
+Clip a rectangle when the area you kept is what you are studying. Clip whole
+basins, or read the values out of MERIT-DrainAttr, when the numbers have to
+mean what they mean globally.
 
 ### Bring your own flow directions
 

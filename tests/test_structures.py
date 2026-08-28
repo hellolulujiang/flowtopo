@@ -270,8 +270,13 @@ def test_clipping_a_whole_basin_reproduces_every_value(example):
     assert np.allclose(partial[inside], full[inside], rtol=1e-6, atol=1e-6)
 
 
-def test_a_rectangle_only_loses_cells_fed_from_across_the_cut(example):
-    """Not a defect: their catchment was deleted, so the sum is smaller."""
+def test_a_rectangle_answers_for_the_rectangle(example):
+    """Not an error: a smaller catchment has a smaller area.
+
+    The kernel sums what drains in, over the cells it was given. Where the
+    clip holds a cell's whole catchment the answer is the global one; where it
+    does not, the answer describes the clip. Never larger, either way.
+    """
     topo, grid = example
     full = topo.upstream_area(ordering="dfs")
 
@@ -285,5 +290,5 @@ def test_a_rectangle_only_loses_cells_fed_from_across_the_cut(example):
     both = keep & sub.mask
     assert both.any()
     assert np.all(partial[both] <= full[both] + 1e-4)      # never larger
-    unchanged = np.count_nonzero(np.abs(partial[both] - full[both]) < 1e-4)
-    assert unchanged > 0.9 * np.count_nonzero(both)        # most are untouched
+    same = np.count_nonzero(np.abs(partial[both] - full[both]) < 1e-4)
+    assert same > 0.9 * np.count_nonzero(both)             # most catchments intact
