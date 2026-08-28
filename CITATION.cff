@@ -1,0 +1,47 @@
+cff-version: 1.2.0
+title: "FlowTopo: orderings, layerings and kernels for D8 flow networks"
+message: "If you use this software, please cite it as below."
+type: software
+authors:
+  - family-names: Jiang
+    given-names: Lulu
+    affiliation: "Sun Yat-sen University"
+  - family-names: Wu
+    given-names: Huan
+  - family-names: Chen
+    given-names: Weitian
+  - family-names: Huang
+    given-names: Zhijun
+  - family-names: Yang
+    given-names: Ting
+  - family-names: Li
+    given-names: Lingfeng
+license: MIT
+version: 0.1.0
+repository-code: "https://github.com/hellolulujiang/flowtopo"
+abstract: >-
+  Six topological representations of a D8 flow network -- three serial
+  orderings and three parallel layerings -- and four kernels run over all of
+  them under every propagation manner each supports. The conflict-free
+  downstream layering guarantees that no two cells in a layer share a
+  receiver, which makes a threaded push safe without atomics and is the only
+  way to run Strahler stream order under push at all.
+keywords:
+  - hydrology
+  - flow direction
+  - drainage network
+  - parallel algorithms
+references:
+  - type: software
+    title: "pyflwdir: fast methods to work with hydro- and topography data in pure Python"
+    authors:
+      - family-names: Eilander
+        given-names: Dirk
+        affiliation: "Deltares; Institute for Environmental Studies (IVM), Vrije Universiteit Amsterdam"
+    repository-code: "https://github.com/Deltares/pyflwdir"
+    doi: "10.5281/zenodo.4287337"
+    license: MIT
+    notes: >-
+      FlowTopo's flat downstream-pointer representation, its D8 decoding
+      conventions, its donor-count array and its breadth-first sequence builder
+      follow this package.

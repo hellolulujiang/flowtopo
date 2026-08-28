@@ -1,0 +1,3 @@
+{"type":"FeatureCollection","features":[
+{"type":"Feature","geometry":{"type":"Point","coordinates":[117.9046417000,24.3969090700]},"properties":{"region_id":43,"global_basin_id":8595,"local_basin_id":163,"basin_cell_count":93432,"basin_area_km2":729.010000,"outlet_dir":0,"outlet_flag":2,"outlet_lon":117.9046417000,"outlet_lat":24.3969090700,"bbox_geo_minlon":117.4021437000,"bbox_geo_minlat":24.2019098500,"bbox_geo_maxlon":117.9138083000,"bbox_geo_maxlat":24.4452422100}}
+]}
