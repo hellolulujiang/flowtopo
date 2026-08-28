@@ -33,7 +33,7 @@ are archived in [`docs/media`](docs/media).
 An ordering is a topological sort of the valid cells: every cell comes after
 the cells it depends on. One pass over the sequence computes any kernel.
 
-| topological sort from the sources | breadth-first from the pit | depth-first from the pit |
+| topological sort from the sources<br>`ordering="topo"` | breadth-first from the pit<br>`ordering="bfs"` | depth-first from the pit<br>`ordering="dfs"` |
 | :---: | :---: | :---: |
 | [![](docs/media/seq_topo.gif)](https://github.com/user-attachments/assets/802b448c-46a1-4d7f-a1e3-c2cd1f1c9385) | [![](docs/media/seq_bfs.gif)](https://github.com/user-attachments/assets/5680a958-2d7e-4003-80af-0a1ac4ab769e) | [![](docs/media/seq_dfs.gif)](https://github.com/user-attachments/assets/0f48bc7a-98f2-4948-ae02-8769db772250) |
 | a cell is appended once all its donors are done | cells in order of hop count from the pit | one tributary subtree at a time |
@@ -43,13 +43,27 @@ The three differ in memory access pattern. Depth-first has the lowest simulated
 L1 miss rate on the example basin: 10.6%, against 21.8% (breadth-first) and
 37.0% (topological sort).
 
+**Direction.** An ordering is built in one direction and reversed on demand.
+Depth-first and breadth-first start at the pit, so they come out downstream to
+upstream (`d2u`, position 0 is a pit); the topological sort starts at the
+headwaters, so it comes out upstream to downstream (`u2d`, position 0 is a
+headwater). The two are reverses of each other.
+
+Which one a kernel needs follows from the way its values travel. Drainage area,
+longest upstream path and Strahler order accumulate **into** the receiver and
+need `u2d`; distance to outlet reads **from** the receiver and needs `d2u`. The
+kernels flip the sequence for you, so `topo.upstream_area(ordering="dfs")`
+walks the depth-first order upstream to downstream even though it was built the
+other way. Ask for a direction explicitly with
+`topo.ordering("dfs", "u2d")`.
+
 ## Parallel layerings
 
 A layering assigns every cell a layer index such that cells in the same layer
 are independent of each other. Layers run in order; cells within a layer run
 in parallel. Layer 0 holds the headwaters.
 
-| as soon as possible | conflict-free downstream | as late as possible |
+| as soon as possible<br>`layering="asap"` | conflict-free downstream<br>`layering="cfds"` | as late as possible<br>`layering="alap"` |
 | :---: | :---: | :---: |
 | [![](docs/media/lyr_asap.gif)](https://github.com/user-attachments/assets/b204458c-1dbf-4cac-ac2b-a5bee193eb79) | [![](docs/media/lyr_cfds.gif)](https://github.com/user-attachments/assets/c7df9a2f-8ec4-475d-b9ed-c963ef762d54) | [![](docs/media/lyr_alap.gif)](https://github.com/user-attachments/assets/4407d9af-47e6-4fcc-b409-ea4bf850d3ff) |
 | every cell in the earliest layer its donors allow | as soon as possible, plus one rule: no two cells in a layer share a receiver | every cell in the latest layer possible |
@@ -58,6 +72,10 @@ in parallel. Layer 0 holds the headwaters.
 The minimum layer count is set by the longest flow path. The conflict-free rule
 may add a few layers; on the example basin it adds none (949 layers for all
 three).
+
+Layerings are built `u2d`, layer 0 at the headwaters. The downstream-propagating
+kernel needs them the other way round, and flips them itself;
+`topo.decomposition("cfds", "d2u")` gives that view directly.
 
 ## Spatial partitions
 
@@ -70,7 +88,7 @@ working set stays in its own memory. The paper's benchmark uses four, because
 the server has four Xeon Platinum 8270 processors, each a NUMA node with 26
 cores, and runs about 13 threads inside each subregion.
 
-| basin-level | subbasin-level |
+| basin-level<br>`level="basin"` | subbasin-level<br>`level="subbasin"` |
 | :---: | :---: |
 | [![](docs/media/part_basin.png)](docs/media/part_basin.png) | [![](docs/media/part_subbasin.png)](docs/media/part_subbasin.png) |
 | whole basins assigned to subregions, weighted by cell count | a basin too large for one subregion is cut along its mainstem |
