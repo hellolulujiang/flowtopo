@@ -290,9 +290,11 @@ def main():
         verdict = "ok" if value <= limit else "FAILED"
         print(f"    {kernel:24s} {value:12.6g} {unit:5s} "
               f"tolerance {limit:.4g} {unit:5s} {verdict}")
-    print("\n  Drainage area and longest path are not expected to match bit for")
+    print("\n  Drainage area is the one result not expected to match bit for")
     print("  bit: floating-point addition is not associative and each manner")
-    print("  sums a confluence's donors in a different order.")
+    print("  sums a confluence's donors in a different order.  The rest agree")
+    print("  exactly, longest path included, since its confluence rule takes")
+    print("  the larger of two donors rather than adding them.")
 
     if unsafe_rows:
         print("\n  Rows marked unsafe above ran a plain push under a layering")

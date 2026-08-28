@@ -24,9 +24,11 @@ pip install -e .            # numpy + rasterio
 pip install -e ".[speed]"   # + numba, for the threaded kernels
 ```
 
-Everything works without numba. The scalar builders fall back to pure Python
-loops, which are correct but slow on a large grid, and `flowtopo.parallel`
-raises rather than pretending to use threads.
+The structures and the serial kernels work without numba. The scalar builders
+fall back to pure Python loops, correct but slow on a large grid. The threaded
+kernels do not: `flowtopo.parallel` raises rather than pretending to use
+threads, so install the `speed` extra before running anything below that uses
+it.
 
 ## Five minutes
 
@@ -176,7 +178,7 @@ For a layering you also choose how a cell and its receiver exchange the value:
 | --- | --- | --- |
 | `pull` | the receiver gathers from its donors | always; needs the adjacency table |
 | `push` | each cell writes into its receiver | only under `cfds` |
-| `atomic_push` | the same scatter through `np.add.at` | always |
+| `atomic_push` | the same scatter through `np.add.at` | always, except Strahler order, which has none |
 
 ```python
 upa = topo.upstream_area(layering="cfds", manner="push")
@@ -233,7 +235,8 @@ Set `n_parts` to the number of processors, one subregion each. The paper's
 benchmark uses four, one per NUMA node of a four-socket Xeon Platinum 8270
 server, with about 13 threads working inside each subregion.
 
-`part` holds a subregion index per cell, `-1` outside the network. With
+`part` holds a subregion index per cell, `-1` outside the network and
+`flowtopo.MAINSTEM` (-2) on a mainstem cell held back to the second stage. With
 `level="basin"` whole basins are assigned to subregions by cell count; a basin
 is never split, so one dominant basin leaves the other processors idle. The
 bundled example is a single basin, so it shows this directly: basin-level gives
@@ -287,6 +290,7 @@ terminals, 247 is nodata. The file's own nodata value is honoured as well,
 which matters because 255 means an endorheic terminal here, not nodata. Write a result back next to it:
 
 ```python
+import flowtopo
 from flowtopo import write_geotiff
 
 topo = flowtopo.FlowTopo.from_raster("my_dir.tif")
@@ -303,11 +307,12 @@ results against the serial depth-first reference, and prints PASS or FAIL:
 python example.py --data my_dir.tif --out out_mine
 ```
 
-Drainage area and longest upstream path are not expected to agree bit for bit
-across manners. Floating-point addition is not associative and each manner sums
-a confluence's donors in a different order; the differences are around 1e-6 of
-the largest value. The orderings, the layerings and Strahler order do agree
-exactly, and the checks treat them that way.
+Drainage area is the one result not expected to agree bit for bit across
+manners. Floating-point addition is not associative and each manner sums a
+confluence's donors in a different order; on the bundled basin the spread is
+0.0027 km², about 1e-6 of the largest value. Everything else agrees exactly,
+longest upstream path included, because its confluence rule takes the larger
+of two donors rather than adding them. The checks treat them that way.
 
 ## Where to look next
 
