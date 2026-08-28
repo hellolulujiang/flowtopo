@@ -6,6 +6,8 @@ and a propagation manner, so the same network can be traversed six ways and
 the answers compared.
 """
 
+import warnings
+
 import numpy as np
 
 from . import core, geodist, kernels, locality, partition as _partition
@@ -86,6 +88,23 @@ class FlowTopo:
         elif shape is None:
             raise ValueError("a flat d8 array needs shape=(nrow, ncol)")
         nrow, ncol = shape
+
+        strange = core.unknown_codes(d8, nodata=nodata)
+        if strange:
+            total = sum(strange.values())
+            worst = sorted(strange.items(), key=lambda kv: -kv[1])[:5]
+            listed = ", ".join(f"{code} ({count:,} cells)" for code, count in worst)
+            warnings.warn(
+                f"{total:,} cells carry a code this D8 convention does not "
+                f"define: {listed}. Codes here are powers of two clockwise "
+                f"from east, with 0 and 255 terminal and 247 nodata. TauDEM "
+                f"and GRASS number their directions 1 to 8 instead, and read "
+                f"that way every undefined cell becomes a pit. Reclassify the "
+                f"grid, or pass nodata= if this is the grid's nodata value.",
+                RuntimeWarning,
+                stacklevel=2,
+            )
+
         idxs_ds = core.d8_to_downstream(d8, nrow, ncol, nodata=nodata)
         obj = cls(idxs_ds, shape, transform=transform, latlon=latlon,
                   mask=idxs_ds >= 0)

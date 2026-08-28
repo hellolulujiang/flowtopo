@@ -37,6 +37,27 @@ _RANK_BUSY = -8888
 
 LAYER_NODATA = -1
 
+D8_CODES = frozenset({0, 1, 2, 4, 8, 16, 32, 64, 128, 255})
+"""Every code this convention defines, the two terminals included."""
+
+
+def unknown_codes(dir_flat, nodata=None):
+    """Codes in the grid that this convention does not define.
+
+    Returns ``{code: count}``. A non-empty result almost always means the grid
+    uses another D8 convention: TauDEM numbers its directions 1 to 8
+    anticlockwise from east, GRASS 1 to 8 anticlockwise from north-east, and
+    neither survives being read as powers of two. Such a code decodes to no
+    direction at all, so the cell becomes a pit and the network quietly falls
+    apart into fragments.
+    """
+    dir_flat = np.asarray(dir_flat, dtype=np.uint8).ravel()
+    codes, counts = np.unique(dir_flat, return_counts=True)
+    skip = set(D8_CODES) | {int(D8_NODATA)}
+    if nodata is not None and 0 <= int(nodata) <= 255:
+        skip.add(int(nodata))
+    return {int(c): int(n) for c, n in zip(codes, counts) if int(c) not in skip}
+
 
 # ---------------------------------------------------------------------------
 # D8 decoding

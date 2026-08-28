@@ -1,5 +1,7 @@
 """GeoTIFF I/O for D8 grids and kernel results, through rasterio."""
 
+import os
+
 import numpy as np
 
 
@@ -37,7 +39,15 @@ def _rasterio():
 def read_geotiff(path):
     """Read a single-band GeoTIFF into a flat array and a :class:`GridHeader`."""
     rasterio = _rasterio()
-    with rasterio.open(path) as src:
+    if not os.path.exists(path):
+        raise FileNotFoundError(f"no such raster: {path}")
+    try:
+        src = rasterio.open(path)
+    except Exception as error:
+        raise ValueError(
+            f"{path} could not be read as a raster: {error}"
+        ) from error
+    with src:
         data = src.read(1)
         t = src.transform
         header = GridHeader(

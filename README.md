@@ -230,15 +230,24 @@ python example.py --data my_dir.tif
 ## Global products
 
 This repository holds the method and one example basin. The global 90 m
-products are on Zenodo, as per-region GeoTIFFs for 65 regions:
+products are on Zenodo, as per-region GeoTIFFs for 65 regions.
+
+[![](docs/media/kernel_products.png)](docs/media/kernel_products.png)
+
+*The four kernels computed over the whole 90 m network and released as
+MERIT-DrainAttr: (a) flow length downstream, (b) flow length upstream,
+(c) Strahler stream order, (d) upstream drainage area.*
+
 
 * **MERIT-FlowTopo** ([10.5281/zenodo.20653059](https://doi.org/10.5281/zenodo.20653059)) —
   the precomputed structures: depth-first sequence, conflict-free downstream
   and as-late-as-possible layerings, subbasin partition; all eight structures
-  for Region 43 (South China).
+  for Region 43 (South China). About 978 GB uncompressed, 49 GB compressed.
 * **MERIT-DrainAttr** ([10.5281/zenodo.20686665](https://doi.org/10.5281/zenodo.20686665)) —
-  flow length downstream, flow length upstream and Strahler order for every
-  region.
+  the four maps above: flow length downstream, flow length upstream and
+  Strahler stream order for every region, and upstream drainage area for
+  Region 43, since MERIT Hydro already distributes it globally.
+  About 622 GB uncompressed, 60 GB compressed.
 * **MERIT-FullBasin** ([10.5281/zenodo.20344113](https://doi.org/10.5281/zenodo.20344113)) —
   the partition into the 65 regions.
 

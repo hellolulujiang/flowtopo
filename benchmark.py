@@ -92,6 +92,9 @@ def run(size, repeats=5):
         rows.append((label, float(np.median(times)), conflicts, wrong, layering))
 
     base = rows[0][1]
+    if topo.ncells < 500_000:
+        print("    (this grid is small: starting threads costs more than the")
+        print("     work saved, so the threaded rows will look slow. Try 2000+.)")
     print(f"    {'form':30s} {'median s':>9s} {'speedup':>8s} "
           f"{'conflicts':>10s} {'wrong':>10s}")
     for label, seconds, conflicts, wrong, layering in rows:
