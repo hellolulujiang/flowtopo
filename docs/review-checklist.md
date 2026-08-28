@@ -88,6 +88,55 @@ anyone to take a statement on trust.
 | Cache model | LRU ages started at 0, like an untouched way | Every set lost one way; the simulator disagreed with a true LRU by 5e-6 |
 | Decoding | The grid's own nodata code was ignored | 255 is a terminal here, so a grid using it for nodata silently gained cells |
 
+## A third pass: prose, layout and coverage
+
+The rounds above attacked behaviour. A later pass attacked the writing and the
+shape of the repository, and found its own defects.
+
+* **`docs/methods.md` described nine of twenty-five public methods** while its
+  own opening promised every one, with its origin and its complexity.
+* **Three sentences in the README ran past forty words**, one to fifty-two.
+* **Global products had grown into the longest section on the page**, saying
+  less per line than the sections about the structures themselves.
+* **Two figures were left unreferenced** after a section was rewritten, the
+  same fault an earlier round had cleaned up once already.
+* **A foreign D8 convention decoded silently.** TauDEM and GRASS number their
+  directions 1 to 8; read as powers of two every undefined code becomes a pit,
+  and the network falls into fragments with nothing to say so.
+* **A missing raster raised a rasterio traceback** rather than naming the file.
+
+What these have in common: none of them break a test. A reviewer looking only
+at behaviour will not find them, and a reviewer reading only the README will
+not find the ones in the code.
+
+### Checks worth repeating
+
+```sh
+# every public name appears in the catalogue
+python -c "
+import pathlib, flowtopo, flowtopo.parallel as P
+m = pathlib.Path('docs/methods.md').read_text()
+pub = {n for n in flowtopo.__all__ if callable(getattr(flowtopo, n))}
+pub |= {n for n in dir(P) if not n.startswith('_')
+        and getattr(getattr(P, n), '__module__', '') == 'flowtopo.parallel'}
+print(sorted(n for n in pub if n.split('.')[-1] not in m) or 'all covered')"
+
+# every figure in docs/media is referenced by something
+grep -o 'docs/media/[^)"]*' README.md docs/*.md | sed 's/.*://' | sort -u > /tmp/used
+ls docs/media | sed 's|^|docs/media/|' | sort > /tmp/have
+comm -13 /tmp/used /tmp/have    # anything printed is an orphan
+
+# sentences over 28 words
+python -c "
+import re, pathlib
+s = re.sub(r'\`\`\`.*?\`\`\`', '', pathlib.Path('README.md').read_text(), flags=re.S)
+for p in s.split(chr(10)*2):
+    f = ' '.join(p.split())
+    if f[:1] in '#*|>' or not f: continue
+    for x in re.split(r'(?<=[.:])\\s+', f):
+        if len(x.split()) > 28: print(len(x.split()), x[:80])"
+```
+
 ## Angles not yet attacked
 
 A reviewer looking for something new should start here.
