@@ -230,6 +230,41 @@ too, which matters because 255 means a terminal here, not nodata.
 python example.py --data my_dir.tif
 ```
 
+## Getting the input data
+
+The structures are indexed against the MERIT Hydro 90 m flow-direction grid,
+cell for cell. To recompute anything, or to use a released structure on real
+data, you need that grid, and it is **not redistributed here**: get it from its
+authors at <http://hydro.iis.u-tokyo.ac.jp/~yamadai/MERIT_Hydro/>, under the
+CC BY-NC 4.0 terms they set. Only the 731 km² example basin travels with this
+repository, under the same terms.
+
+The global grid spans 180° W to 180° E and 85° N to 60° S: about 174,000 rows
+by 432,000 columns, 75.17 billion cells, of which 22.24 billion are land. It is
+distributed as 5° × 5° tiles.
+
+Two ways to work with it:
+
+**A region at a time.** Mosaic the tiles that cover one of the 65 hydrological
+regions and run the structures on that. A region encloses only complete basins
+and stays within 38° × 38°, which keeps its cell indices inside 32-bit
+integers — the same reason this package uses int32 throughout. The region
+boundaries come from MERIT-FullBasin, below.
+
+```python
+import flowtopo
+topo = flowtopo.FlowTopo.from_raster("region43_dir.tif")
+upa  = topo.upstream_area(ordering="dfs")
+```
+
+**One basin at a time.** Clip whatever basin you care about, as the bundled
+example was clipped, and run the same code. A clipped subset stays valid:
+removing downstream cells does not change what its upstream cells depend on.
+
+Whole basins or whole regions, never an arbitrary rectangle — a cut through
+the middle of a basin turns the cells on the cut into pits, and the drainage
+area beyond it is simply gone.
+
 ## Global products
 
 This repository holds the method and one example basin. Applied to the whole
