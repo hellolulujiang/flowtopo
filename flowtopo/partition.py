@@ -52,6 +52,7 @@ def _lpt(weights, n_parts):
 def _mainstem(idxs_ds, pit, upstream, us_table, n_up):
     """Cells from a pit up to the head, taking the larger tributary each time."""
     stem = [int(pit)]
+    seen = {int(pit)}
     cell = int(pit)
     while True:
         donors = us_table[cell][: max(int(n_up[cell]), 0)]
@@ -59,6 +60,9 @@ def _mainstem(idxs_ds, pit, upstream, us_table, n_up):
         if donors.size == 0:
             break
         cell = int(donors[np.argmax(upstream[donors])])
+        if cell in seen:          # a cycle: walking on would never end
+            break
+        seen.add(cell)
         stem.append(cell)
     return np.array(stem, dtype=np.int64)
 
@@ -121,7 +125,17 @@ def partition(topo, n_parts=4, level="subbasin"):
 
     basins = topo.basins
     labels, counts = _basin_sizes(basins, mask)
+    # Label 0 is not a basin: it collects the cells that never reach a pit,
+    # the ones caught in a cycle. They are assigned like any other cell but
+    # must never be decomposed, since a mainstem walk through a cycle does
+    # not terminate.
+    labels = labels[labels != 0]
     sizes = counts[labels]
+    if labels.size == 0:
+        part[mask] = 0
+        load = np.zeros(n_parts, dtype=np.float64)
+        load[0] = float(mask.sum())
+        return part, load
 
     def by_whole_basin():
         """Assign each basin as one item, then look the answer up per cell."""
@@ -129,6 +143,11 @@ def partition(topo, n_parts=4, level="subbasin"):
         lookup = np.full(counts.size, -1, dtype=np.int32)
         lookup[labels] = assign
         part[mask] = lookup[basins[mask]]
+        stranded = mask & (part == -1)
+        if stranded.any():
+            lightest = int(np.argmin(load))
+            part[stranded] = lightest
+            load[lightest] += int(stranded.sum())
         return part, load
 
     if level == "basin":
@@ -185,4 +204,10 @@ def partition(topo, n_parts=4, level="subbasin"):
             part[value] = assign[item]
     keep = mask & ~decomposed
     part[keep] = lookup[basins[keep]]
+    # Cells that reach no pit carry label 0, which has no entry in the
+    # assignment; give them the lightest subregion rather than leaving them out.
+    stranded = mask & (part == -1)
+    if stranded.any():
+        part[stranded] = int(np.argmin(load))
+        load[int(np.argmin(load))] += int(stranded.sum())
     return part, load

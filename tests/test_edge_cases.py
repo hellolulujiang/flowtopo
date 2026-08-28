@@ -175,3 +175,50 @@ def test_a_cell_draining_into_nodata_becomes_a_pit():
     topo = build(grid)
     centre = 1 * 3 + 1
     assert topo.idxs_ds[centre] == centre
+
+
+# ---------------------------------------------------------------------------
+# Partitioning a network whose cells never reach a pit
+# ---------------------------------------------------------------------------
+
+
+@pytest.fixture
+def eight_cell_cycle():
+    """A ring with no outlet: every cell carries basin label 0."""
+    grid = np.full((6, 8), D8_NODATA, dtype=np.uint8)
+    for (row, col), code in {(1, 1): 1, (1, 2): 1, (1, 3): 4, (2, 3): 4,
+                             (3, 3): 16, (3, 2): 16, (3, 1): 64,
+                             (2, 1): 64}.items():
+        grid[row, col] = code
+    return build(grid)
+
+
+@pytest.mark.parametrize("level", ["basin", "subbasin"])
+def test_partitioning_a_ring_terminates_and_assigns_everything(
+        eight_cell_cycle, level):
+    """Label 0 is not a basin, so it must never be walked as one.
+
+    A mainstem walk follows donors upstream; inside a ring that never ends.
+    """
+    topo = eight_cell_cycle
+    part, load = topo.partition(n_parts=2, level=level)
+    assigned = part >= 0
+    assert np.array_equal(assigned | (part == flowtopo.MAINSTEM), topo.mask)
+    assert load.sum() == np.count_nonzero(assigned)
+
+
+@pytest.mark.parametrize("level", ["basin", "subbasin"])
+def test_a_ring_beside_a_real_basin_is_still_assigned(level):
+    grid = np.full((6, 40), D8_NODATA, dtype=np.uint8)
+    grid[1, :38] = 1
+    grid[1, 38] = 0                       # a long chain to a pit
+    grid[2, :38] = 64                     # a row draining into it
+    for (row, col), code in {(4, 10): 1, (4, 11): 1, (4, 12): 4,
+                             (5, 12): 16, (5, 11): 16, (5, 10): 64}.items():
+        grid[row, col] = code             # a six-cell ring off to one side
+    topo = build(grid)
+    assert np.any(topo.basins[topo.mask] == 0)     # the ring reaches no pit
+
+    part, _ = topo.partition(n_parts=4, level=level)
+    covered = (part >= 0) | (part == flowtopo.MAINSTEM)
+    assert np.array_equal(covered, topo.mask)

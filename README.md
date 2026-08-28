@@ -375,7 +375,7 @@ clone verifies itself:
 pytest
 ```
 
-164 tests. Every ordering, layering, partition, kernel and manner is
+168 tests. Every ordering, layering, partition, kernel and manner is
 cross-checked on the example basin, write-conflict counts included. The
 structures are checked against their definitions directly: an ordering is a
 topological sort, a layer is an antichain, a receiver comes after its
