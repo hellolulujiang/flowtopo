@@ -102,6 +102,29 @@ def test_a_sequence_shorter_than_the_cell_count_means_a_cycle(cycle_beside_basin
         assert topo.ordering(name, "u2d").size < topo.ncells
 
 
+def test_the_six_structures_cover_different_cells_around_a_cycle():
+    """Each is right by its own definition, and they disagree.
+
+    A chain draining into a ring has no pit, so the two that start at a pit
+    return nothing and the one that measures rank from a pit numbers nothing.
+    The three that start at the headwaters cover the chain and stop at the
+    ring. The user guide states these counts, so they are pinned here.
+    """
+    grid = np.full((8, 14), D8_NODATA, dtype=np.uint8)
+    grid[3, 1:9] = 1                                   # an eight-cell chain
+    grid[3, 9], grid[4, 9] = 4, 1                      # into a four-cell ring
+    grid[4, 10], grid[3, 10] = 64, 16
+    topo = build(grid)
+    assert np.count_nonzero(topo.mask) == 12
+
+    assert topo.ordering("dfs", "d2u").size == 0
+    assert topo.ordering("bfs", "d2u").size == 0
+    assert topo.ordering("topo", "u2d").size == 8
+    for name, covered in (("asap", 8), ("cfds", 8), ("alap", 0)):
+        layers, _ = topo.layering(name)
+        assert np.count_nonzero((layers >= 0) & topo.mask) == covered
+
+
 def test_asap_leaves_cycle_cells_unnumbered(cycle_beside_basin):
     layers, _ = cycle_beside_basin.layering("asap")
     stranded = np.count_nonzero((layers < 0) & cycle_beside_basin.mask)

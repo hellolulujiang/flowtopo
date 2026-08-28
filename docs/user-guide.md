@@ -139,24 +139,34 @@ conflicts under `asap`, a threaded push still returned correct results on one
 run, because the colliding cells landed on the same thread. Count the
 conflicts instead.
 
-### Cells that get no layer
+### Cells a structure cannot cover
 
-A layering returns `-1` for a cell it could not schedule. That happens for
-cells outside the network, and also for cells sitting in a cycle or draining
-into one: their dependencies never resolve, so no layer satisfies them. All
-three layerings leave those alone rather than forcing them somewhere, which
-keeps every layer independent whatever the input.
-
-MERIT Hydro is cycle-free, so this stays at zero on released data. A grid you
-built or repaired yourself may not be, and nothing raises. Check it:
+A cycle is a set of cells that drain into each other in a loop. No traversal
+can order them, because each depends on the next. MERIT Hydro is cycle-free,
+so this stays at zero on released data, but a grid you built or repaired
+yourself may not be, and nothing raises. Check it:
 
 ```python
 layers, _ = topo.layering("cfds")
 stranded = np.count_nonzero((layers < 0) & topo.mask)   # 0 on a clean grid
 ```
 
-The orderings say the same thing a different way: a sequence shorter than
-`topo.ncells` means some cells never became reachable.
+A sequence shorter than `topo.ncells` says the same thing.
+
+When a cycle is present the six structures do not agree on what is left, and
+each is right by its own definition. A twelve-cell grid, an eight-cell chain
+draining into a four-cell ring, covers:
+
+| structure | cells covered |
+| --- | --- |
+| `dfs`, `bfs` | 0, they start at a pit and there is none |
+| `topo` | 8, it starts at the headwaters and stops at the ring |
+| `asap`, `cfds` | 8, same reason |
+| `alap` | 0, it needs a rank measured from a pit |
+
+So the number of cells you get back depends on which structure you asked for.
+Rule out cycles first and the question does not arise: on a clean grid all six
+cover every valid cell.
 
 ## Choosing a manner
 
