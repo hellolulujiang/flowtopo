@@ -6,11 +6,12 @@
 Orderings, layerings and partitions for D8 flow networks, in Python.
 
 This is the method and one worked example. The global 90 m products it computes
-are released separately on Zenodo, and the companion manuscript is
-Jiang et al. (in preparation); both are linked below.
+are released separately on Zenodo and linked below. The companion manuscript,
+Jiang et al., is in preparation and has no link yet.
 
 FlowTopo builds reusable structures for a D8 flow network, computed once from
-the flow-direction grid and used by any computation over the network:
+the flow-direction grid and reused by any computation that has to visit the
+cells in drainage order:
 
 * **three serial orderings** — a single pass over the cells, one core;
 * **three parallel layerings** — independent cells grouped into layers, several
@@ -31,8 +32,11 @@ side. All of them sit in [`docs/media`](docs/media).
 
 ## Serial orderings
 
-An ordering is a topological sort of the valid cells: every cell comes after
-the cells it depends on. One pass over the sequence computes any kernel.
+An ordering is a topological sort of the valid cells. One pass over it
+computes any kernel, because every cell is visited after whatever it needs.
+Which end that is depends on the kernel: drainage area needs a cell's donors
+first, flow length needs its receiver first. A sequence is stored in one
+direction and reversed on demand, and the kernels do the reversing.
 
 | topological sort from the sources<br>`ordering="topo"` | breadth-first from the pit<br>`ordering="bfs"` | depth-first from the pit<br>`ordering="dfs"` |
 | :---: | :---: | :---: |
@@ -97,7 +101,7 @@ whole, so the 62-cell basin and the 11-cell basin cannot be balanced.
 subtree moves to the lighter subregion.
 
 Whole basins cannot be split, so one large basin leaves the other processors
-idle. The bundled example is a single basin, which makes the point exactly:
+idle. The bundled example is one basin, so it shows this plainly:
 
 ```python
 topo.partition(n_parts=4, level="basin")[1]      # [93432, 0, 0, 0]
@@ -107,7 +111,9 @@ topo.partition(n_parts=4, level="subbasin")[1]   # [23121, 23121, 23121, 23120]
 Subbasin-level walks upstream from the outlet, taking the larger tributary at
 each confluence. That isolates the mainstem; the tributary subtrees hanging off
 it are dealt to the lighter subregions, and the mainstem runs in a second stage
-once they finish. Its cells are marked `flowtopo.MAINSTEM`.
+once they finish. Its cells are marked `flowtopo.MAINSTEM`. That is why the
+four subregion loads above come to 92,483 rather than 93,432: the 949 mainstem
+cells are held back for the second stage and do not count as first-stage work.
 
 ## Write conflicts
 
@@ -176,8 +182,8 @@ pip install -e .            # numpy + rasterio
 pip install -e ".[speed]"   # + numba, for threaded kernels
 ```
 
-Requires Python ≥ 3.10, the versions the tests run on. Without numba
-everything still runs, in pure Python.
+Needs Python 3.10 or newer. The tests run on 3.10, 3.11 and 3.12. Without
+numba everything still runs, in pure Python.
 
 ## Quick start
 
@@ -251,16 +257,19 @@ redistributed here**: get it from its authors at
 terms they set. <https://fullhydro.org> has the download and the table saying
 which MERIT Hydro tiles each region covers.
 
-You do not need a whole region. Clip a basin out of one and the structures
-clip with it: filter a released sequence to the cells you kept and it is still
-a topological sort of them, and a filtered layering keeps its layers mutually
-independent, the conflict-free guarantee included. Verified on a 12,809-cell
-subbasin of the bundled example: all three orderings stayed valid, all three
-layerings kept their layers independent, `cfds` kept zero conflicts, and
-recomputing from scratch on the clip gave the identical answer.
+You do not need a whole region. Clip whatever you like out of one and the
+structures clip with it: filter a released sequence to the cells you kept and
+it is still a topological sort of them, and a filtered layering keeps its
+layers mutually independent, the conflict-free guarantee included. That holds
+for any subset, because dropping cells from a valid order cannot put a cell
+before something it depends on, and dropping cells from a layer cannot make
+two of the survivors depend on each other. Checked on a 12,809-cell subbasin
+of the bundled example: all three orderings stayed valid, all three layerings
+kept their layers independent, `cfds` kept zero conflicts, and recomputing
+from scratch on the clip reproduced all 12,809 values bit for bit.
 
-Clip however suits you: a basin, a rectangle, a country. Nothing breaks, and
-nothing is approximated. Two things are worth keeping apart.
+Clip however suits you: a basin, a rectangle, a country. Two things behave
+differently and are worth keeping apart.
 
 **The structures describe the network you hand over.** Clip it and the
 structures of the clip are exact: still a topological sort, still layers of
@@ -332,8 +341,9 @@ eight, so the alternatives can be compared somewhere. 978 GB uncompressed,
 
 [![](docs/media/global_partitions.png)](docs/media/global_partitions.png)
 
-*The eight structures over the whole network: three serial orderings, three
-parallel layerings, two spatial partitions.*
+*All eight structures, drawn over the whole network: three serial orderings,
+three parallel layerings, two spatial partitions. The release itself carries
+four of them per region, and all eight for Region 43.*
 
 Because the D8 field does not change, these are computed once and reused
 without limit. That is the point: a cost every tool currently pays on every
