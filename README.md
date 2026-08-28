@@ -260,8 +260,18 @@ hydrological region, ready to read. To compute anything on them you also need
 the flow-direction grid they are indexed against, and that is **not
 redistributed here**: get it from its authors at
 <http://hydro.iis.u-tokyo.ac.jp/~yamadai/MERIT_Hydro/>, under the CC BY-NC 4.0
-terms they set. <https://fullhydro.org> has the download and the table saying
-which MERIT Hydro tiles each region covers.
+terms they set.
+
+Working out which of their files a region needs is the fiddly part, and
+<https://fullhydro.org/fullbasin/regions/> does that for you. Pick a region on
+the map or in the table and it lists the MERIT Hydro tiles covering it, with
+the row and column offset to place each one. It does not host MERIT Hydro, only
+the list. The same page has all 96 region outlines as one GeoJSON, tile names
+and offsets included, for doing it in a script. Those 96 are 65 continental
+regions, two that straddle the antimeridian and 29 island groups; the products
+below cover the 65. Region boxes sit on whole degrees and one degree is exactly
+1,200 cells at 3 arc-seconds, so a region cuts out of the global rasters by
+integer arithmetic, with no resampling.
 
 You do not need a whole region. Clip whatever you like out of one and the
 structures clip with it: filter a released sequence to the cells you kept and

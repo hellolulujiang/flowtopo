@@ -292,7 +292,14 @@ Run `python benchmark.py` on your own machine.
 `FlowTopo.from_raster` reads any single-band D8 GeoTIFF in the MERIT Hydro
 convention: codes are powers of two clockwise from east, 0 and 255 are
 terminals, 247 is nodata. The file's own nodata value is honoured as well,
-which matters because 255 means an endorheic terminal here, not nodata. Write a result back next to it:
+which matters because 255 means an endorheic terminal here, not nodata.
+
+For a MERIT Hydro region rather than your own grid,
+<https://fullhydro.org/fullbasin/regions/> lists which MERIT Hydro tiles cover
+each region and where each one goes. It does not host the tiles; download those
+from their authors.
+
+Write a result back next to the input:
 
 ```python
 import flowtopo
