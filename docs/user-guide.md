@@ -175,6 +175,20 @@ upa = topo.upstream_area(layering="cfds", manner="push")
 If `manner` is left unset, FlowTopo picks a safe one for the layering: `push`
 under `cfds`, `atomic_push` (or `pull` for Strahler) under the other two.
 
+Ask for an unsafe combination and it runs anyway, quietly returning the wrong
+number. That is deliberate: seeing the conflict is the point, and there is no
+cheap way to tell a genuine request apart from a mistake. Three cells, two
+headwaters meeting at a pit, is enough to show it:
+
+```python
+topo.strahler_order(layering="cfds", manner="push")   # [1 2 1], correct
+topo.strahler_order(layering="asap", manner="push")   # [1 1 1], wrong
+```
+
+Both donors sit in the same `asap` layer, so one write lands on top of the
+other and the confluence never happens. Drainage area goes the same way, one
+donor short. If you set `manner` yourself, count the conflicts first.
+
 Strahler order has no `atomic_push`, and this is not an oversight. Its
 confluence rule is *two branches of equal order raise the order by one*, which
 is a comparison and a count, not an addition. No atomic implements that, so
@@ -183,10 +197,11 @@ under a layering the only safe push is the conflict-free one.
 ### Precision on a large network
 
 Drainage area accumulates in the precision of the array you give it, float32 by
-default. float32 stops resolving one 90 m cell, about 0.007 km², once the
-running total passes roughly 1e5 km², so on a continental basin the cells
-nearest the outlet stop contributing. Hand it a float64 array when that
-matters:
+default. One 90 m cell is about 0.007 km², and a float32 total large enough
+stops registering it: past roughly 2e5 km² a single cell no longer moves the
+total, at 1e6 km² it takes about five cells, at 5e6 km² about thirty-six. So on
+a continental river the headwaters accumulate exactly and the cells near the
+outlet stop counting. Hand it a float64 array when that matters:
 
 ```python
 import numpy as np

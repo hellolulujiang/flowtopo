@@ -149,8 +149,8 @@ itself; it needs the upstream adjacency table.
 ### `upstream_area`
 
 Accumulates a per-cell quantity downstream. Keeps the dtype of `cell_area`:
-float32 stops resolving one 90 m cell once the running total passes about
-1e5 km², so pass float64 on a continental network.
+a float32 total past about 2e5 km² no longer moves when one 90 m cell, about
+0.007 km², is added to it, so pass float64 on a continental network.
 
 ### `distance_to_outlet`
 
