@@ -13,7 +13,9 @@ every structure and the results are cross-checked.
 Video overview of the six structures and the three propagation manners:
 <https://youtu.be/tE5K2wM3TTY>. The animations below are small previews: the
 **▶ HD video** link under each one opens the full-resolution video, which can
-be paused, scrubbed, restarted and viewed fullscreen.
+be paused, scrubbed, restarted and viewed fullscreen. The video opens in this
+tab; use the browser's Back button to return, or Ctrl/Cmd-click the link to
+open it in a new tab.
 
 ## Serial orderings
 
