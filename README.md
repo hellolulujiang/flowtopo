@@ -57,33 +57,6 @@ The minimum layer count is set by the longest flow path. The conflict-free rule
 may add a few layers; on the example basin it adds none (949 layers for all
 three).
 
-## Write conflicts
-
-Three ways to propagate values through the network:
-
-| pull | atomic push | push |
-| :---: | :---: | :---: |
-| [![](docs/media/manner_pull.gif)](https://github.com/user-attachments/assets/c897fd03-b2dd-4371-aba8-cd2bd0692857) | [![](docs/media/manner_atomic_push.gif)](https://github.com/user-attachments/assets/f988af11-ce25-4fb4-9edd-1bfa5b025dde) | [![](docs/media/manner_push.gif)](https://github.com/user-attachments/assets/35cad382-2d3c-4378-aab4-7df1c9fc5384) |
-| each receiver reads its donors; needs the upstream table | donors write through atomics; correct, but float sums are not reproducible | donors write directly; deterministic, no locks; requires the conflict-free layering |
-| [▶ HD video](https://github.com/user-attachments/assets/c897fd03-b2dd-4371-aba8-cd2bd0692857) | [▶ HD video](https://github.com/user-attachments/assets/f988af11-ce25-4fb4-9edd-1bfa5b025dde) | [▶ HD video](https://github.com/user-attachments/assets/35cad382-2d3c-4378-aab4-7df1c9fc5384) |
-
-A push is only safe if no two cells in a layer write to the same receiver.
-Conflict counts on the example basin (93,432 cells):
-
-| layering | conflicting writes inside a layer |
-| --- | --- |
-| as soon as possible | 12,122 |
-| **conflict-free downstream** | **0** |
-| as late as possible | 39,130 |
-
-The count is a property of the layering and can be checked before running. A
-test run is not a reliable check: a race does not always trigger. Strahler
-order has no atomic form, because its confluence rule is a comparison rather
-than an addition, so its only parallel push is under the conflict-free
-layering.
-
-If `manner` is not given, FlowTopo picks a safe one for the layering.
-
 ## Spatial partitions
 
 A layering spreads work across threads that share memory. Splitting the network
@@ -107,6 +80,34 @@ Subbasin-level walks upstream from the outlet, taking the larger tributary at
 each confluence. That isolates the mainstem; the tributary subtrees hanging off
 it are dealt to the lighter subregions, and the mainstem runs in a second stage
 once they finish. Its cells are marked `flowtopo.MAINSTEM`.
+
+## Write conflicts
+
+Whichever structure carries the traversal, a kernel still has to move a value
+from a cell to its receiver. There are three ways to do it:
+
+| pull | atomic push | push |
+| :---: | :---: | :---: |
+| [![](docs/media/manner_pull.gif)](https://github.com/user-attachments/assets/c897fd03-b2dd-4371-aba8-cd2bd0692857) | [![](docs/media/manner_atomic_push.gif)](https://github.com/user-attachments/assets/f988af11-ce25-4fb4-9edd-1bfa5b025dde) | [![](docs/media/manner_push.gif)](https://github.com/user-attachments/assets/35cad382-2d3c-4378-aab4-7df1c9fc5384) |
+| each receiver reads its donors; needs the upstream table | donors write through atomics; correct, but float sums are not reproducible | donors write directly; deterministic, no locks; requires the conflict-free layering |
+| [▶ HD video](https://github.com/user-attachments/assets/c897fd03-b2dd-4371-aba8-cd2bd0692857) | [▶ HD video](https://github.com/user-attachments/assets/f988af11-ce25-4fb4-9edd-1bfa5b025dde) | [▶ HD video](https://github.com/user-attachments/assets/35cad382-2d3c-4378-aab4-7df1c9fc5384) |
+
+A push is only safe if no two cells in a layer write to the same receiver.
+Conflict counts on the example basin (93,432 cells):
+
+| layering | conflicting writes inside a layer |
+| --- | --- |
+| as soon as possible | 12,122 |
+| **conflict-free downstream** | **0** |
+| as late as possible | 39,130 |
+
+The count is a property of the layering and can be checked before running. A
+test run is not a reliable check: a race does not always trigger. Strahler
+order has no atomic form, because its confluence rule is a comparison rather
+than an addition, so its only parallel push is under the conflict-free
+layering.
+
+If `manner` is not given, FlowTopo picks a safe one for the layering.
 
 ## Which structure to use
 
