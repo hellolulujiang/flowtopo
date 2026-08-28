@@ -40,8 +40,8 @@ the cells it depends on. One pass over the sequence computes any kernel.
 | [▶ HD video](https://github.com/user-attachments/assets/802b448c-46a1-4d7f-a1e3-c2cd1f1c9385) | [▶ HD video](https://github.com/user-attachments/assets/5680a958-2d7e-4003-80af-0a1ac4ab769e) | [▶ HD video](https://github.com/user-attachments/assets/0f48bc7a-98f2-4948-ae02-8769db772250) |
 
 The three differ in memory access pattern. Depth-first has the lowest simulated
-L1 miss rate on the example basin: 10.6%, against 21.8% (breadth-first) and
-37.0% (topological sort).
+L1 miss rate on the example basin: 10.55%, against 21.83% (breadth-first) and
+37.02% (topological sort).
 
 **Direction.** An ordering is built in one direction and reversed on demand.
 Depth-first and breadth-first start at the pit, so they come out downstream to
@@ -280,8 +280,9 @@ clone verifies itself:
 pytest
 ```
 
-33 tests: every ordering, layering, partition, kernel and manner is
-cross-checked on the example basin, including the write-conflict counts. The
+54 tests: every ordering, layering, partition, kernel and manner is
+cross-checked on the example basin, including the write-conflict counts, plus
+degenerate inputs — an empty grid, a lone cell, and networks with cycles. The
 same tests, and `example.py` end to end, run on Python 3.10, 3.11 and 3.12 on
 every push; the badge at the top links to those runs.
 

@@ -20,7 +20,8 @@ tolerance, because summation order at a confluence differs between methods.
 The tests also check that every ordering, layering and safe manner agrees on
 the same input, that only the conflict-free downstream layering has zero
 receiver conflicts, and that a push under the other two layerings loses
-writes.
+writes. `tests/test_edge_cases.py` covers degenerate inputs: an empty grid, a
+lone cell, and networks with cycles, none of which may raise.
 
 ## If you change a kernel or a structure
 

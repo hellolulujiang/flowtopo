@@ -620,6 +620,12 @@ def layering_cfds(idxs_ds):
     confluence rule is a comparison, not an addition, so no atomic can fix it.
     Costs at most a few layers over the plain form.
 
+    Cells caught in a cycle cannot be scheduled by their dependencies. Unlike
+    the as-soon-as-possible form, which leaves them at ``-1``, this one places
+    them in a layer once nothing else can advance -- still one receiver per
+    cell per layer, so the guarantee holds, though a kernel has no meaningful
+    value to compute for them.
+
     Returns
     -------
     layers : ndarray of int32
@@ -654,7 +660,10 @@ def layering_alap(idxs_ds, bsn=None):
     rnk = rank_to_pit(idxs_ds)
     max_bsn = int(bsn.max()) if bsn.size else 0
     if max_bsn == 0:
-        raise ValueError("basin labels are all zero; cannot build ALAP layering")
+        # Nothing reaches a pit: an empty grid, or a network that is all cycle.
+        # The other two layerings return an empty layering here rather than
+        # failing, so this one does too.
+        return np.full(idxs_ds.size, LAYER_NODATA, dtype=np.int32), 0
 
     max_rnk = np.zeros(max_bsn + 1, dtype=np.int64)
     inside = bsn != 0

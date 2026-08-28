@@ -22,55 +22,66 @@ each into the lightest subregion so far.
 
 import numpy as np
 
+from ._compat import njit
 from .core import seq_dfs_from_pit
+from .kernels import upstream_area
 
 MAINSTEM = -2
 """Marker for cells held back to the second stage."""
 
 
-def _upstream_cells(idxs_ds, mask):
-    """Number of cells draining into each cell, itself included."""
-    seq = seq_dfs_from_pit(idxs_ds)[::-1]          # upstream to downstream
-    count = np.where(mask, 1.0, 0.0).astype(np.float64)
-    for idx in seq:
-        ds = idxs_ds[idx]
-        if ds >= 0 and ds != idx and mask[idx] and mask[ds]:
-            count[ds] += count[idx]
-    return count
+def _group_by_basin(basins, mask):
+    """Cells grouped by basin in one sort: ``(labels, cells, starts)``."""
+    cells = np.nonzero(mask)[0].astype(np.int64)
+    keys = basins[cells]
+    order = np.argsort(keys, kind="stable")
+    cells = cells[order]
+    keys = keys[order]
+    labels, starts = np.unique(keys, return_index=True)
+    return labels, cells, np.append(starts, cells.size)
 
 
 def _lpt(weights, n_parts):
     """Longest-processing-time-first assignment; returns a part per item."""
-    order = np.argsort(-np.asarray(weights, dtype=np.float64))
+    weights = np.asarray(weights, dtype=np.float64)
     load = np.zeros(n_parts, dtype=np.float64)
-    part = np.empty(len(weights), dtype=np.int32)
-    for item in order:
+    part = np.empty(weights.size, dtype=np.int32)
+    for item in np.argsort(-weights):
         lightest = int(np.argmin(load))
         part[item] = lightest
         load[lightest] += weights[item]
     return part, load
 
 
-def _mainstem(idxs_ds, pit, upstream, donors):
+def _mainstem(idxs_ds, pit, upstream, us_table, n_up):
     """Cells from a pit up to the head, taking the larger tributary each time."""
-    stem = [pit]
-    cell = pit
+    stem = [int(pit)]
+    cell = int(pit)
     while True:
-        ups = donors.get(cell)
-        if not ups:
+        donors = us_table[cell][: max(int(n_up[cell]), 0)]
+        donors = donors[donors >= 0]
+        if donors.size == 0:
             break
-        cell = max(ups, key=lambda u: upstream[u])
+        cell = int(donors[np.argmax(upstream[donors])])
         stem.append(cell)
-    return stem
+    return np.array(stem, dtype=np.int64)
 
 
-def _donor_map(idxs_ds, cells):
-    donors = {}
-    for idx in cells:
-        ds = int(idxs_ds[idx])
-        if ds >= 0 and ds != idx:
-            donors.setdefault(ds, []).append(int(idx))
-    return donors
+@njit(cache=True)
+def _label_subtrees(idxs_ds, seq_d2u, on_stem, eligible, root):
+    """Every cell inherits the subtree of the cell it drains into.
+
+    ``seq_d2u`` visits a receiver before its donors, so one pass is enough.
+    A cell draining straight onto the mainstem roots its own subtree.
+    """
+    for k in range(seq_d2u.size):
+        idx = seq_d2u[k]
+        if eligible[idx] == 0 or on_stem[idx] == 1:
+            continue
+        ds = idxs_ds[idx]
+        if ds < 0 or ds == idx:
+            continue
+        root[idx] = idx if on_stem[ds] == 1 else root[ds]
 
 
 def partition(topo, n_parts=4, level="subbasin"):
@@ -90,10 +101,16 @@ def partition(topo, n_parts=4, level="subbasin"):
     Returns
     -------
     part : ndarray of int32
-        Subregion index per cell; ``-1`` outside the network, and ``-2`` on a
-        mainstem held back to the second stage (``subbasin`` only).
+        Subregion index per cell; ``-1`` outside the network, and ``-2``
+        (:data:`MAINSTEM`) on a mainstem held back to the second stage.
     load : ndarray of float64
         Cells assigned to each subregion, the mainstem cells excluded.
+
+    Notes
+    -----
+    Cells caught in a cycle have no place in the drainage hierarchy. They are
+    assigned like any other cell, but a kernel cannot produce a meaningful
+    value for them in the first place.
     """
     if level not in ("basin", "subbasin"):
         raise ValueError("level must be 'basin' or 'subbasin'")
@@ -102,52 +119,70 @@ def partition(topo, n_parts=4, level="subbasin"):
 
     idxs_ds = topo.idxs_ds
     mask = topo.mask
-    basins = topo.basins
     part = np.full(idxs_ds.size, -1, dtype=np.int32)
+    if not mask.any():
+        return part, np.zeros(n_parts, dtype=np.float64)
 
-    labels = np.unique(basins[mask])
-    sizes = {int(b): int(np.count_nonzero(basins == b)) for b in labels}
+    labels, cells, bounds = _group_by_basin(topo.basins, mask)
+    sizes = np.diff(bounds)
 
     if level == "basin":
-        items = list(sizes)
-        assign, load = _lpt([sizes[b] for b in items], n_parts)
-        for item, basin in enumerate(items):
-            part[(basins == basin) & mask] = assign[item]
+        assign, load = _lpt(sizes, n_parts)
+        for item in range(labels.size):
+            part[cells[bounds[item] : bounds[item + 1]]] = assign[item]
         return part, load
 
-    # subbasin: decompose any basin that will not fit in one subregion
-    target = sum(sizes.values()) / float(n_parts)
-    upstream = _upstream_cells(idxs_ds, mask)
+    # ---- subbasin: decompose any basin that will not fit in one subregion --
+    target = sizes.sum() / float(n_parts)
+    oversized = np.nonzero((sizes > target) & (sizes >= 3))[0]
+
+    if oversized.size == 0:
+        assign, load = _lpt(sizes, n_parts)
+        for item in range(labels.size):
+            part[cells[bounds[item] : bounds[item + 1]]] = assign[item]
+        return part, load
+
+    seq_d2u = seq_dfs_from_pit(idxs_ds)
+    ones = np.ones(idxs_ds.size, dtype=np.float32)
+    upstream = upstream_area(idxs_ds, ones, seq_u2d=seq_d2u[::-1],
+                             manner="serial", mask=mask)
+    us_table, n_up = topo.upstream()
+
+    on_stem = np.zeros(idxs_ds.size, dtype=np.uint8)
+    eligible = np.zeros(idxs_ds.size, dtype=np.uint8)
+    for item in oversized:
+        members = cells[bounds[item] : bounds[item + 1]]
+        eligible[members] = 1
+        pit = members[np.argmax(upstream[members])]
+        on_stem[_mainstem(idxs_ds, pit, upstream, us_table, n_up)] = 1
+
+    part[on_stem == 1] = MAINSTEM
+
+    root = np.full(idxs_ds.size, -1, dtype=np.int64)
+    _label_subtrees(idxs_ds, np.ascontiguousarray(seq_d2u, dtype=np.int32),
+                    on_stem, eligible, root)
 
     items, members = [], []
-    for basin, size in sizes.items():
-        cells = np.nonzero((basins == basin) & mask)[0]
-        if size <= target or cells.size < 3:
-            items.append(size)
-            members.append(cells)
+    for item in range(labels.size):
+        if item in set(oversized.tolist()):
             continue
+        group = cells[bounds[item] : bounds[item + 1]]
+        items.append(group.size)
+        members.append(group)
 
-        pit = int(cells[np.argmax(upstream[cells])])
-        donors = _donor_map(idxs_ds, cells)
-        stem = _mainstem(idxs_ds, pit, upstream, donors)
-        on_stem = np.zeros(idxs_ds.size, dtype=bool)
-        on_stem[stem] = True
-        part[stem] = MAINSTEM
-
-        # every cell inherits the subtree of the cell it drains into
-        root = np.full(idxs_ds.size, -1, dtype=np.int64)
-        for idx in seq_dfs_from_pit(idxs_ds):        # receivers before donors
-            if not mask[idx] or basins[idx] != basin or on_stem[idx]:
-                continue
-            ds = int(idxs_ds[idx])
-            root[idx] = idx if on_stem[ds] else root[ds]
-
-        for subtree in np.unique(root[root >= 0]):
-            cells = np.nonzero(root == subtree)[0]
-            items.append(cells.size)
-            members.append(cells)
+    labelled = root[root >= 0]
+    if labelled.size:
+        order = np.argsort(labelled, kind="stable")
+        cell_ids = np.nonzero(root >= 0)[0][order]
+        keys = labelled[order]
+        _, starts = np.unique(keys, return_index=True)
+        starts = np.append(starts, cell_ids.size)
+        for k in range(starts.size - 1):
+            group = cell_ids[starts[k] : starts[k + 1]]
+            items.append(group.size)
+            members.append(group)
 
     assign, load = _lpt(items, n_parts)
-    for item, cells in enumerate(members):
-        part[cells] = assign[item]
+    for item, group in enumerate(members):
+        part[group] = assign[item]
     return part, load
