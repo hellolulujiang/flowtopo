@@ -1,5 +1,7 @@
 # FlowTopo
 
+[![licence: MIT](https://img.shields.io/badge/licence-MIT-blue.svg)](LICENSE)
+
 Orderings, layerings and kernels for D8 flow networks, in Python.
 
 FlowTopo builds reusable traversal structures for a D8 flow network: three
@@ -15,7 +17,8 @@ Video overview of the six structures and the three propagation manners:
 **▶ HD video** link under each one opens the full-resolution video, which can
 be paused, scrubbed, restarted and viewed fullscreen. The video opens in this
 tab; use the browser's Back button to return, or Ctrl/Cmd-click the link to
-open it in a new tab.
+open it in a new tab. The same files are archived in
+[`docs/media`](docs/media).
 
 ## Serial orderings
 
@@ -142,7 +145,8 @@ python benchmark.py     # serial vs threaded at several grid sizes
   and a manner; threads; raster I/O.
 * [`docs/methods.md`](docs/methods.md) — each method with its origin and its
   complexity.
-* [`examples/`](examples) — a notebook on the bundled data.
+* [`examples/quickstart.ipynb`](examples/quickstart.ipynb) — a notebook on the
+  bundled data, stored with its output so it reads without running anything.
 
 ## Example data
 
