@@ -5,33 +5,41 @@
 
 Orderings, layerings and partitions for D8 flow networks, in Python.
 
-This is the method and one worked example. The global 90 m products it computes
-are released separately on Zenodo and linked below. The companion manuscript,
-Jiang et al., is in preparation and has no link yet.
+A D8 flow-direction grid fixes the order in which cells must be visited: a
+cell can be processed only after its upstream neighbours, or, for some
+kernels, only after its downstream one. FlowTopo computes that order once,
+from the flow-direction grid alone, and stores it as a reusable structure.
+Any routine that walks the network in drainage order (drainage area, flow
+length, stream order, routing) can then reuse the structure instead of
+rebuilding the traversal each time.
 
-FlowTopo builds reusable structures for a D8 flow network, computed once from
-the flow-direction grid and reused by any computation that has to visit the
-cells in drainage order:
+Three kinds of structure are provided:
 
-* **three serial orderings** — a single pass over the cells, one core;
-* **three parallel layerings** — independent cells grouped into layers, several
+* **serial orderings** (three): a topological sort of the cells, walked in
+  one pass on one core;
+* **parallel layerings** (three): cells grouped into layers so that cells in
+  the same layer are independent of each other and can run on several
   threads;
-* **two spatial partitions** — independent subregions, several processors.
+* **spatial partitions** (two): the network cut into independent subregions,
+  one per processor.
 
-`topo` in the snippets that follow is a `FlowTopo`, built once from a
-flow-direction raster. [Quick start](#quick-start) shows how.
-
-Four kernels come with the package to exercise them: upstream drainage area,
-distance to outlet, longest upstream path, Strahler stream order. They are
-tests of the structures, not the point of the package: each runs on every
+Four kernels are bundled to exercise the structures: upstream drainage area,
+distance to outlet, longest upstream path and Strahler stream order. They are
+test cases, not the purpose of the package. Each kernel runs on every
 structure and the results are cross-checked.
 
-A narrated video overview of the structures and the propagation manners is on
-YouTube: <https://youtu.be/tE5K2wM3TTY>, where it can be paused, scrubbed and
-watched fullscreen. Every animation below is a preview; the
-**full-size MP4** link under it is the same animation at 1240 x 620
-(the propagation ones at 836 x 934), about 2.2 times the preview on each
-side. All of them sit in [`docs/media`](docs/media).
+In the snippets below, `topo` is a `FlowTopo` object built once from a
+flow-direction raster; [Quick start](#quick-start) shows how.
+
+This repository holds the Python reference implementation and one worked
+example basin. The global 90 m products computed with the same method are
+released separately on Zenodo; see [Global products](#global-products). The
+companion paper (Jiang et al.) is in preparation and has no link yet.
+
+A narrated video walks through the structures and the three ways of moving a
+value from a cell to its receiver: <https://youtu.be/tE5K2wM3TTY>. The
+animations in this README are reduced previews. Each has a **full-size MP4**
+link beneath it, and all files are in [`docs/media`](docs/media).
 
 ## Serial orderings
 
