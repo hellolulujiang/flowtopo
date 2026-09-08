@@ -76,36 +76,44 @@ Each answers one question; each animation runs on the same two-basin example
 and links to its full-size MP4 (all nine also play on the
 [animation page](https://hellolulujiang.github.io/flowtopo/)).
 
-<p><b>One core: in what order are the cells visited?</b> &nbsp;·&nbsp; serial orderings, one pass each</p>
+### One core: in what order?
+
+*Three serial orderings. One pass over any of them computes a kernel; they differ in how the memory is walked.*
+
 <table>
-<tr><th align="center">topological sort from the sources</th><th align="center">breadth-first from the pit</th><th align="center">depth-first from the pit</th></tr>
+<tr><th align="center">topological sort from the sources<br><code>ordering="topo"</code></th><th align="center">breadth-first from the pit<br><code>ordering="bfs"</code></th><th align="center">depth-first from the pit<br><code>ordering="dfs"</code></th></tr>
 <tr><td align="center"><a href="https://hellolulujiang.github.io/flowtopo/media/seq_topo.mp4"><img src="docs/media/seq_topo.gif" width="270"></a></td><td align="center"><a href="https://hellolulujiang.github.io/flowtopo/media/seq_bfs.mp4"><img src="docs/media/seq_bfs.gif" width="270"></a></td><td align="center"><a href="https://hellolulujiang.github.io/flowtopo/media/seq_dfs.mp4"><img src="docs/media/seq_dfs.gif" width="270"></a></td></tr>
-<tr><td align="center"><code>ordering="topo"</code></td><td align="center"><code>ordering="bfs"</code></td><td align="center"><code>ordering="dfs"</code></td></tr>
-<tr><td valign="top">a cell is appended once all its donors are done</td><td valign="top">cells in order of hop count from the pit</td><td valign="top">one tributary subtree at a time; best cache locality</td></tr>
+<tr><td valign="top" align="center">a cell is appended once all its donors are done</td><td valign="top" align="center">cells in order of hop count from the pit</td><td valign="top" align="center">one tributary subtree at a time; best cache locality</td></tr>
 </table>
 
-<p><b>Many threads on one processor: which cells run together?</b> &nbsp;·&nbsp; parallel layerings; layers run in order, cells within a layer in parallel</p>
+### Many threads: which cells together?
+
+*Three parallel layerings. Layers run in order; the cells of one layer run at the same time.*
+
 <table>
-<tr><th align="center">as soon as possible</th><th align="center">conflict-free downstream</th><th align="center">as late as possible</th></tr>
+<tr><th align="center">as soon as possible<br><code>layering="asap"</code></th><th align="center">conflict-free downstream<br><code>layering="cfds"</code></th><th align="center">as late as possible<br><code>layering="alap"</code></th></tr>
 <tr><td align="center"><a href="https://hellolulujiang.github.io/flowtopo/media/lyr_asap.mp4"><img src="docs/media/lyr_asap.gif" width="270"></a></td><td align="center"><a href="https://hellolulujiang.github.io/flowtopo/media/lyr_cfds.mp4"><img src="docs/media/lyr_cfds.gif" width="270"></a></td><td align="center"><a href="https://hellolulujiang.github.io/flowtopo/media/lyr_alap.mp4"><img src="docs/media/lyr_alap.gif" width="270"></a></td></tr>
-<tr><td align="center"><code>layering="asap"</code></td><td align="center"><code>layering="cfds"</code></td><td align="center"><code>layering="alap"</code></td></tr>
-<tr><td valign="top">every cell in the earliest layer its donors allow</td><td valign="top">as soon as possible, plus: no two cells in a layer share a receiver</td><td valign="top">every cell as late as the longest flow path allows; the most evenly filled layers in practice</td></tr>
+<tr><td valign="top" align="center">every cell in the earliest layer its donors allow</td><td valign="top" align="center">as soon as possible, plus: no two cells in a layer share a receiver</td><td valign="top" align="center">every cell as late as the longest flow path allows; the most evenly filled layers in practice</td></tr>
 </table>
 
-<p><b>Several processors: which cells go where?</b> &nbsp;·&nbsp; spatial partitions, one subregion per processor, no value crosses a boundary</p>
+### Several processors: which cells where?
+
+*Two spatial partitions, one subregion per processor. Both cut along the drainage hierarchy, so no value crosses a boundary while a kernel runs.*
+
 <table>
-<tr><th align="center">basin-level</th><th align="center">subbasin-level</th></tr>
+<tr><th align="center">basin-level<br><code>level="basin"</code></th><th align="center">subbasin-level<br><code>level="subbasin"</code></th></tr>
 <tr><td colspan="2" align="center"><a href="docs/media/partition_schematic.png"><img src="docs/media/partition_schematic.png" width="560"></a></td></tr>
-<tr><td align="center"><code>level="basin"</code></td><td align="center"><code>level="subbasin"</code></td></tr>
-<tr><td valign="top">whole basins dealt to subregions; one dominant basin cannot be balanced</td><td valign="top">the dominant basin split along its mainstem; tributary subtrees move to the lighter subregion, the mainstem runs in a separate stage</td></tr>
+<tr><td valign="top" align="center">whole basins dealt to subregions; one dominant basin cannot be balanced</td><td valign="top" align="center">the dominant basin split along its mainstem; tributary subtrees move to the lighter subregion, the mainstem runs in a separate stage</td></tr>
 </table>
 
-<p><b>At a confluence: how does a value reach the receiver?</b> &nbsp;·&nbsp; propagation manners</p>
+### At a confluence: how does a value reach the receiver?
+
+*Three propagation manners. The structure says when a cell runs; the manner says who writes.*
+
 <table>
-<tr><th align="center">pull</th><th align="center">atomic push</th><th align="center">push</th></tr>
+<tr><th align="center">pull<br><code>manner="pull"</code></th><th align="center">atomic push<br><code>manner="atomic_push"</code></th><th align="center">push<br><code>manner="push"</code></th></tr>
 <tr><td align="center"><a href="https://hellolulujiang.github.io/flowtopo/media/manner_pull.mp4"><img src="docs/media/manner_pull.gif" width="200"></a></td><td align="center"><a href="https://hellolulujiang.github.io/flowtopo/media/manner_atomic_push.mp4"><img src="docs/media/manner_atomic_push.gif" width="200"></a></td><td align="center"><a href="https://hellolulujiang.github.io/flowtopo/media/manner_push.mp4"><img src="docs/media/manner_push.gif" width="200"></a></td></tr>
-<tr><td align="center"><code>manner="pull"</code></td><td align="center"><code>manner="atomic_push"</code></td><td align="center"><code>manner="push"</code></td></tr>
-<tr><td valign="top">each receiver reads its donors and writes only itself; needs the donor table</td><td valign="top">donors write through atomics; correct, but float sums are not reproducible</td><td valign="top">donors write directly; deterministic, no locks; safe only under <code>cfds</code></td></tr>
+<tr><td valign="top" align="center">each receiver reads its donors and writes only itself; needs the donor table</td><td valign="top" align="center">donors write through atomics; correct, but float sums are not reproducible</td><td valign="top" align="center">donors write directly; deterministic, no locks; safe only under <code>cfds</code></td></tr>
 </table>
 
 Three things to know:
