@@ -297,8 +297,9 @@ terminals, 247 is nodata. The file's own nodata value is honoured as well,
 which matters because 255 means an endorheic terminal here, not nodata.
 
 For a MERIT Hydro region rather than your own grid,
-<https://fullhydro.org/fullbasin/> lists which MERIT Hydro tiles cover
-each region and where each one goes. It does not host the tiles; download those
+<https://fullhydro.org/fullbasin/> (under "Which MERIT Hydro tiles do I
+need?") lists which MERIT Hydro tiles cover each region and where each one
+goes. It does not host the tiles; download those
 from their authors.
 
 Write a result back next to the input:

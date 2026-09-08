@@ -272,7 +272,8 @@ The structures index into the MERIT Hydro flow-direction grid, which is not
 redistributed here: get it from
 <https://global-hydrodynamics.github.io/MERIT_Hydro/> under its own terms.
 Which MERIT Hydro tiles a region needs, and the row and column offset of each,
-is listed at <https://fullhydro.org/fullbasin/>. Region boxes sit on
+is listed at <https://fullhydro.org/fullbasin/> under "Which MERIT Hydro tiles
+do I need?". Region boxes sit on
 whole degrees and one degree is 1,200 cells, so a region is cut from the
 global rasters by integer arithmetic, with no resampling.
 
