@@ -229,46 +229,38 @@ the two records above, the scripts and data behind every figure, and an
 archived copy of this package at v1.0.
 
 <details>
-<summary>The structures and the kernel products over the 65 regions</summary>
+<summary><b>Serial orderings over the 65 regions.</b> The sequence index of each ordering, mapped globally and in the example basin: the topological sort rises smoothly from headwaters to outlets, breadth-first forms bands of equal hop count from the outlet, depth-first breaks the basin into one compact block per tributary.</summary>
 
 [![](docs/media/global_orderings.png)](docs/media/global_orderings.png)
 
-*Serial orderings. Sequence index of (a) the topological sort from the
-sources, (b) breadth-first from the pit and (c) depth-first from the pit,
-over the 65 regions (left) and in the example basin (right, outlet marked by
-the red triangle). The global maps share one scale from 0 to the total cell
-count; each basin map is scaled to itself. All three are stored upstream to
-downstream, so the colour shows each ordering's spatial structure, not where
-it was built from: the topological sort rises smoothly from headwaters to
-outlets, breadth-first forms bands of equal hop count from the outlet, and
-depth-first breaks the basin into compact blocks, one per tributary.*
+*(a) topological sort from the sources, (b) breadth-first from the pit, (c) depth-first from the pit. Global maps share one scale from 0 to the total cell count; each basin map is scaled to itself; the red triangle is the outlet. All three are stored upstream to downstream.*
+
+</details>
+
+<details>
+<summary><b>Parallel layerings over the 65 regions.</b> The layer index of each layering: under as-soon-as-possible and conflict-free downstream most cells sit in the first few layers and only the main rivers reach high indices, whereas as-late-as-possible spreads the cells evenly over all layers.</summary>
 
 [![](docs/media/global_layerings.png)](docs/media/global_layerings.png)
 
-*Parallel layerings. Layer index of (a) as-soon-as-possible, (b)
-conflict-free downstream and (c) as-late-as-possible layering, same layout.
-Under (a) and (b) most cells sit in the first few layers and only the main
-river corridors reach high indices, so the global scale is cut at 3,000; (c)
-fills its layers evenly and uses the full range, tens of thousands in the
-largest basins. The example basin has 949 layers under all three, and only
-(c) spreads them across the whole basin.*
+*(a) as-soon-as-possible, (b) conflict-free downstream, (c) as-late-as-possible. The global scale is cut at 3,000 in (a) and (b); (c) uses the full range, tens of thousands in the largest basins. The example basin has 949 layers under all three.*
+
+</details>
+
+<details>
+<summary><b>Spatial partitions over the 65 regions.</b> Every region split four ways: basin-level leaves the dominant basin of Region 43 in one subregion on its own, subbasin-level cuts it along the mainstem and the four subregions come out balanced.</summary>
 
 [![](docs/media/global_partitions.png)](docs/media/global_partitions.png)
 
-*Spatial partitions. Every region split four ways: (a, c) all 65 regions,
-(b, d) Region 43 with its subregions labelled 4301 to 4304. Basin-level (top)
-keeps each basin whole, so the dominant basin of Region 43 fills one
-subregion on its own; subbasin-level (bottom) cuts that basin along its
-mainstem (purple) and spreads the pieces, and the four subregions come out
-balanced. The four colours recur region by region.*
+*(a, c) all 65 regions; (b, d) Region 43, subregions 4301 to 4304, mainstem in purple. Top row basin-level, bottom row subbasin-level. The four colours recur region by region.*
+
+</details>
+
+<details>
+<summary><b>Kernel products over the 65 regions.</b> The four variables of MERIT-DrainAttr: flow length downstream, flow length upstream, Strahler stream order on channels draining at least 10 km², and upstream drainage area.</summary>
 
 [![](docs/media/kernel_products.png)](docs/media/kernel_products.png)
 
-*Kernel products. (a) Flow length downstream, km; (b) flow length upstream,
-km; (c) Strahler stream order on channels draining at least 10 km²; (d)
-upstream drainage area, km², colour scale cut at 100 km². The red box marks
-the example basin. MERIT-DrainAttr releases (a) to (c) for every region and
-(d) for Region 43 only, since MERIT Hydro distributes it globally.*
+*(a) flow length downstream, km; (b) flow length upstream, km; (c) Strahler stream order; (d) upstream drainage area, km², colour scale cut at 100 km². The red box is the example basin. (d) is released for Region 43 only, since MERIT Hydro distributes it globally.*
 
 </details>
 
