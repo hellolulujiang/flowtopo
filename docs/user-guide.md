@@ -79,9 +79,9 @@ when you have one core, and a layering when you have several.
 way, position 0 at a headwater. Which one a kernel needs follows from which way
 its information travels:
 
-* drainage area, longest upstream path and stream order accumulate **upward
+* drainage area, flow length upstream and stream order accumulate **upward
   into** the receiver, so they need `u2d`;
-* distance to outlet reads **from** the receiver, so it needs `d2u`.
+* flow length downstream reads **from** the receiver, so it needs `d2u`.
 
 The package picks the right direction for you. You only meet it if you call
 `topo.ordering(name, direction)` yourself.
@@ -98,7 +98,7 @@ All three give a correct answer. They differ in how the memory is walked:
 
 * **`dfs`** finishes one tributary subtree before starting the next, so a
   cell's receiver is only a few positions back. Lowest simulated cache miss
-  rate of the three; on the bundled basin, 10.55% L1 against 21.83% and 37.02%.
+  rate of the three; on the bundled basin, 10.5% L1 against 21.8% and 37.1%.
   Those figures shift by a few points with how the two arrays happen to be
   aligned in memory, but their order does not.
   This is the one to reach for when the kernel will run repeatedly.
@@ -208,8 +208,9 @@ donor short. If you set `manner` yourself, count the conflicts first.
 
 Strahler order has no `atomic_push`, and this is not an oversight. Its
 confluence rule is *two branches of equal order raise the order by one*, which
-is a comparison and a count, not an addition. No atomic implements that, so
-under a layering the only safe push is the conflict-free one.
+is a comparison and a count, not one addition. No single atomic operation
+implements that, so under a layering the only safe push is the conflict-free
+one.
 
 ### Precision on a large network
 
@@ -238,7 +239,8 @@ part, load = topo.partition(n_parts=4, level="subbasin")
 
 Set `n_parts` to the number of processors, one subregion each. The paper's
 benchmark uses four, one per NUMA node of a four-socket Xeon Platinum 8270
-server, with about 13 threads working inside each subregion.
+server, with the thread count inside each subregion set where that server's
+memory bandwidth saturated.
 
 `part` holds a subregion index per cell, `-1` outside the network and
 `flowtopo.MAINSTEM` (-2) on a mainstem cell held back to the second stage. With

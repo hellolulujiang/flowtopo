@@ -92,7 +92,7 @@ layer. No two cells of a layer then write into the same receiver.
 That is what lets a threaded push run with no atomic and stay deterministic.
 It is also the only one of the three under which Strahler stream order can run
 under push at all. The confluence rule there is a comparison and a count, not
-an addition, so no atomic applies. Costs at most a few layers over the plain
+one addition, so no single atomic operation applies. Costs at most a few layers over the plain
 form.
 
 *Complexity:* O(N + E) time, O(N) space.

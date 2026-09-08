@@ -10,8 +10,8 @@ cell can be processed only after its upstream neighbours, or, for some
 kernels, only after its downstream one. FlowTopo computes that order once,
 from the flow-direction grid alone, and stores it as a reusable structure.
 Any routine that walks the network in drainage order (drainage area, flow
-length, stream order, routing) can then reuse the structure instead of
-rebuilding the traversal each time.
+length, stream order, or the upstream-to-downstream step of a routing scheme)
+can then reuse the structure instead of rebuilding the traversal each time.
 
 Three kinds of structure are provided:
 
@@ -24,7 +24,8 @@ Three kinds of structure are provided:
   one per processor.
 
 Four kernels are bundled to exercise the structures: upstream drainage area,
-distance to outlet, longest upstream path and Strahler stream order. They are
+flow length downstream (`distance_to_outlet`), flow length upstream
+(`longest_upstream_path`) and Strahler stream order. They are
 test cases, not the purpose of the package. Each kernel runs on every
 structure and the results are cross-checked.
 
@@ -59,8 +60,8 @@ All nine animations play in the browser on the
 | [full-size MP4](https://hellolulujiang.github.io/flowtopo/media/seq_topo.mp4) | [full-size MP4](https://hellolulujiang.github.io/flowtopo/media/seq_bfs.mp4) | [full-size MP4](https://hellolulujiang.github.io/flowtopo/media/seq_dfs.mp4) |
 
 The three differ in memory access pattern. Depth-first has the lowest simulated
-L1 miss rate on the example basin: 10.55%, against 21.83% (breadth-first) and
-37.02% (topological sort). Those are one alignment of the two arrays the
+L1 miss rate on the example basin: 10.5%, against 21.8% (breadth-first) and
+37.1% (topological sort). Those are one alignment of the two arrays the
 traversal reads, the one where they collide in every cache set. Shift them
 apart and the numbers fall to about 8.8%, 14.2% and 36.9%. The order does not
 move, at any alignment tried.
@@ -72,8 +73,8 @@ headwaters, so it comes out upstream to downstream (`u2d`, position 0 is a
 headwater). The two are reverses of each other.
 
 Which one a kernel needs follows from the way its values travel. Drainage area,
-longest upstream path and Strahler order accumulate **into** the receiver and
-need `u2d`; distance to outlet reads **from** the receiver and needs `d2u`. The
+flow length upstream and Strahler order accumulate **into** the receiver and
+need `u2d`; flow length downstream reads **from** the receiver and needs `d2u`. The
 kernels flip the sequence for you, so `topo.upstream_area(ordering="dfs")`
 walks the depth-first order upstream to downstream even though it was built the
 other way. Ask for a direction explicitly with
@@ -108,7 +109,8 @@ value crosses a subregion boundary while a kernel runs.
 Set `n_parts` to the number of processors: one subregion each, so a subregion's
 working set stays in its own memory. The paper's benchmark uses four, because
 the server has four Xeon Platinum 8270 processors, each a NUMA node with 26
-cores, and runs about 13 threads inside each subregion.
+cores; the thread count inside each subregion was set where that server's
+memory bandwidth saturated.
 
 [![](docs/media/partition_schematic.png)](docs/media/partition_schematic.png)
 
@@ -154,9 +156,9 @@ Conflict counts on the example basin (93,432 cells):
 
 The count is a property of the layering and can be checked before running. A
 test run is not a reliable check: a race does not always trigger. Strahler
-order has no atomic form, because its confluence rule is a comparison rather
-than an addition, so its only parallel push is under the conflict-free
-layering.
+order has no single-atomic form, because its confluence rule is a comparison
+and a count rather than one addition, so its only parallel push is under the
+conflict-free layering.
 
 Because no two cells in a layer share a receiver, the sums always happen in the
 same order: the conflict-free push returns bit-identical results at any thread
@@ -173,13 +175,22 @@ From the paper's benchmark on the full 90 m network (22.2 billion cells,
   37% to about 6%. It is also the baseline to measure parallel speedup
   against; a slower baseline overstates the speedup.
 * **Repeated traversal** (calibration, ensembles) — the as-late-as-possible
-  layering with pull. Fastest in parallel: each layer's working set stays in
-  cache. Pull must store the donor table.
-* **Non-linear kernels, or when RAM is tight** — the conflict-free downstream
-  layering with push. Lock-free and deterministic, stores only the receiver
-  pointer, and the only parallel option for Strahler order.
-* **Across processors** — the subbasin partition, run at about 13 threads each,
-  beyond which memory bandwidth rather than the algorithm bounds the speedup.
+  layering. Fastest in parallel for every kernel: each layer's working set
+  stays in cache. Under it, atomic push beats pull for the sum and maximum
+  kernels (71.1 s against 85.1 s for flow length upstream in the paper); pull
+  is the choice where the kernel has no atomic form, or where the sum must be
+  reproducible, and it must store the donor table.
+* **Non-linear kernels under push, or when RAM is tight** — the conflict-free
+  downstream layering with push. Lock-free and deterministic, stores only the
+  receiver pointer, and the only push that runs Strahler order at all. Pull
+  runs it under any layering, and in the paper's C run pull under
+  as-late-as-possible was faster (4.8 s against 9.1 s); push wins when the
+  donor table does not fit.
+* **Across processors** — the subbasin partition, one subregion per processor,
+  each threaded to the point at which its processor's memory bandwidth
+  saturates. Where that point lies depends on the processor; the paper's
+  Fig. 15 shows it for the server tested, and it has to be measured again on
+  other hardware.
 
 The structures are computed once from the static D8 field and reused without
 limit.
@@ -264,88 +275,46 @@ python example.py --data my_dir.tif
 
 ## Two ways to use this
 
-### Take the structures we release
+### Read the released structures
 
-The structures for the whole 90 m network are on Zenodo, one tile per
-hydrological region, ready to read. To compute anything on them you also need
-the flow-direction grid they are indexed against, and that is **not
-redistributed here**: get it from its authors at
-<https://global-hydrodynamics.github.io/MERIT_Hydro/>, under the CC BY-NC 4.0
-terms they set.
+The structures for the whole 90 m network are on Zenodo, one GeoTIFF per
+region for the 65 continental regions (see [Global products](#global-products)).
+They index into the MERIT Hydro flow-direction grid, which is not redistributed
+here: get it from <https://global-hydrodynamics.github.io/MERIT_Hydro/> under
+its own terms. Which MERIT Hydro tiles a region needs, and the row and column
+offset of each, is listed at <https://fullhydro.org/fullbasin/regions/>. Region
+boxes sit on whole degrees and one degree is 1,200 cells, so a region is cut
+from the global rasters by integer arithmetic, with no resampling.
 
-Working out which of their files a region needs is the fiddly part, and
-<https://fullhydro.org/fullbasin/regions/> does that for you. Pick a region on
-the map or in the table and it lists the MERIT Hydro tiles covering it, with
-the row and column offset to place each one. It does not host MERIT Hydro, only
-the list. The same page has all 96 region outlines as one GeoJSON, tile names
-and offsets included, for doing it in a script. Those 96 are 65 continental
-regions, two that straddle the antimeridian and 29 island groups; the products
-below cover the 65. Region boxes sit on whole degrees and one degree is exactly
-1,200 cells at 3 arc-seconds, so a region cuts out of the global rasters by
-integer arithmetic, with no resampling.
+You need not work with a whole region. Any subset keeps the structures valid: a
+released sequence filtered to the cells you keep is still a topological sort of
+them, and a filtered layering keeps its layers independent, the conflict-free
+rule included, because dropping cells can neither move a cell ahead of
+something it depends on nor make two survivors depend on each other. What a
+subset changes is the kernel's answer, not the structure: drainage area
+computed on a clip counts only the area inside the clip. Clip whole basins when
+the values must match the global ones, or read them from MERIT-DrainAttr.
 
-You do not need a whole region. Clip whatever you like out of one and the
-structures clip with it: filter a released sequence to the cells you kept and
-it is still a topological sort of them, and a filtered layering keeps its
-layers mutually independent, the conflict-free guarantee included. That holds
-for any subset, because dropping cells from a valid order cannot put a cell
-before something it depends on, and dropping cells from a layer cannot make
-two of the survivors depend on each other. Checked on a 12,809-cell subbasin
-of the bundled example: all three orderings stayed valid, all three layerings
-kept their layers independent, `cfds` kept zero conflicts, and recomputing
-from scratch on the clip reproduced all 12,809 values bit for bit.
+### Build them from your own flow directions
 
-Clip however suits you: a basin, a rectangle, a country. Two things behave
-differently and are worth keeping apart.
-
-**The structures describe the network you hand over.** Clip it and the
-structures of the clip are exact: still a topological sort, still layers of
-independent cells, still zero conflicts under `cfds`. Any clip, no exceptions.
-
-**A kernel answers a question about that same network.** Drainage area asks
-how much area drains into a cell, and *how much area* is however much you
-supplied. Clip a catchment in half and the answer halves, not because the
-computation slipped but because you asked about a smaller catchment. The
-number is exactly right for the data it was given.
-
-So the only question is whether your clip contains the whole catchment of the
-cells you care about. A basin does, by definition: clipping one out of the
-bundled example and recomputing reproduces every cell to the last decimal. A
-rectangle does for most of them. The cells it gets wrong are exactly the ones
-with catchment outside the cut, so the share depends on how much drainage the
-cut intercepts rather than on any fixed number: across thirteen rectangles
-through the bundled example, between 92.7% and 99.6% of the kept cells came
-back identical, median 97.8%. For the rest, the ones below a channel the cut
-crossed, the number describes your rectangle rather than the world.
-
-Clip a rectangle when the area you kept is what you are studying. Clip whole
-basins, or read the values out of MERIT-DrainAttr, when the numbers have to
-mean what they mean globally.
-
-### Bring your own flow directions
-
-Any D8 grid in this convention works. Build the eight structures yourself and
-compute on them:
+Any D8 GeoTIFF in the convention above works, and this is the same code that
+produced the release, so a region you build and a region you download are the
+same thing:
 
 ```python
 import flowtopo
 
 topo = flowtopo.FlowTopo.from_raster("my_dir.tif")
 
-seq   = topo.ordering("dfs")              # one of three orderings
-layers, n = topo.layering("cfds")         # one of three layerings
-part, load = topo.partition(n_parts=4)    # one of two partitions
+seq = topo.ordering("dfs")                 # one of three orderings
+layers, n = topo.layering("cfds")          # one of three layerings
+part, load = topo.partition(n_parts=4)     # one of two partitions
 
-upa = topo.upstream_area(ordering="dfs")  # or any kernel, on any structure
+upa = topo.upstream_area(ordering="dfs")   # any kernel, on any structure
 ```
 
-This is the same code that produced the released structures, so a region you
-build yourself and a region you download are the same thing.
-
-Work a region or a basin at a time rather than the globe. A region encloses
-only complete basins and stays within 38° × 38°, which keeps its cell indices
-inside 32-bit integers, which is why this package uses int32 throughout. The
-region boundaries are in MERIT-FullBasin, below.
+Work one region or basin at a time. Indices are int32, so a grid must stay
+under 2.1 billion cells; the 38° × 38° regions of MERIT-FullBasin do.
 
 ## Global products
 
@@ -355,12 +324,13 @@ GeoTIFFs for 65 regions.
 
 ### The structures
 
-**MERIT-FlowTopo** ([10.5281/zenodo.20653058](https://doi.org/10.5281/zenodo.20653058))
+**MERIT-FlowTopo** ([10.5281/zenodo.20653058](https://doi.org/10.5281/zenodo.20653058),
+all versions; this version [10.5281/zenodo.20653059](https://doi.org/10.5281/zenodo.20653059))
 holds the traversal structures themselves. Every region carries the
 depth-first sequence, the conflict-free downstream and as-late-as-possible
 layerings, and the subbasin partition; Region 43 (South China) carries all
 eight, so the alternatives can be compared somewhere. 978 GB uncompressed,
-49 GB compressed.
+50 GB compressed.
 
 [![](docs/media/global_orderings.png)](docs/media/global_orderings.png)
 
@@ -373,12 +343,13 @@ three parallel layerings, two spatial partitions. The release itself carries
 four of them per region, and all eight for Region 43.*
 
 Because the D8 field does not change, these are computed once and reused
-without limit. That is the point: a cost every tool currently pays on every
-run becomes a read.
+without limit. That is the point: a cost the tools surveyed in the paper pay on
+every run becomes a read.
 
 ### What the structures compute
 
-**MERIT-DrainAttr** ([10.5281/zenodo.20686664](https://doi.org/10.5281/zenodo.20686664))
+**MERIT-DrainAttr** ([10.5281/zenodo.20686664](https://doi.org/10.5281/zenodo.20686664),
+all versions; this version [10.5281/zenodo.20686665](https://doi.org/10.5281/zenodo.20686665))
 is the four kernels run over those structures: a baseline, so the variables
 almost everyone wants need not be recomputed either.
 
@@ -388,15 +359,17 @@ Flow length downstream, flow length upstream and Strahler stream order for
 every region; upstream drainage area for Region 43 only, since MERIT Hydro
 already distributes it globally. 622 GB uncompressed, 60 GB compressed.
 
-Anything else is one pass over a structure you already have: a different
-accumulation, a routing state, a variable nobody has asked for yet. That is
+Anything else that walks the network in drainage order is one pass over a
+structure you already have: a different accumulation, the inflow step of a
+routing scheme, a variable nobody has asked for yet. That is
 why the release is the structures and not the variables.
 
 ### The input partition
 
-**MERIT-FullBasin** ([10.5281/zenodo.20344112](https://doi.org/10.5281/zenodo.20344112))
-divides the network into the 65 hydrologically independent regions everything
-above is organised by. It comes from the companion dataset, not from here.
+**MERIT-FullBasin** ([10.5281/zenodo.20344112](https://doi.org/10.5281/zenodo.20344112),
+all versions; this version [10.5281/zenodo.20344113](https://doi.org/10.5281/zenodo.20344113))
+divides the network into 96 hydrologically independent regions; the 65
+continental ones are what everything above is organised by. It comes from the companion dataset, not from here.
 
 ## Acknowledgements
 
@@ -430,8 +403,8 @@ rasters.
 The three layerings, the conflict-free downstream rule, the propagation
 manners, the locality metrics and the benchmark drivers are this project's own.
 
-**Claude** (Anthropic) helped prepare this repository: the Python
-implementation, the tests, the documentation and the packaging were drafted
+**Claude** (Anthropic) helped prepare this repository: the Python port of the
+C implementation, the tests, the documentation and the packaging were drafted
 with it and checked by the authors, and the commit history records where. The
 structures, the algorithms and the results they produce are the authors' own
 work, described in the companion manuscript.
@@ -445,7 +418,7 @@ clone verifies itself:
 pytest
 ```
 
-170 tests. Every ordering, layering, partition, kernel and manner is
+181 tests. Every ordering, layering, partition, kernel and manner is
 cross-checked on the example basin, write-conflict counts included. The
 structures are checked against their definitions directly: an ordering is a
 topological sort, a layer is an antichain, a receiver comes after its
