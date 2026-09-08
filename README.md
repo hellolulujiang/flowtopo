@@ -226,7 +226,7 @@ independent regions, the 65 continental ones being those above.
 **MERIT-FlowTopo code** ([10.5281/zenodo.22227621](https://doi.org/10.5281/zenodo.22227621))
 is the record the paper cites for code: the C implementation that produced
 the two records above, the scripts and data behind every figure, and an
-archived copy of this package at v1.0.
+archived copy of this package (0.1.0, commit c51b93f).
 
 Four maps over the 65 regions, one per line below. Click a line to open its map.
 
