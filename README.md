@@ -185,27 +185,23 @@ methods produce two Zenodo records of per-region GeoTIFFs. Both cover the 65
 continental regions of MERIT-FullBasin; the 29 island groups and the two
 regions straddling the antimeridian are not included.
 
-**MERIT-FlowTopo** ([10.5281/zenodo.20653058](https://doi.org/10.5281/zenodo.20653058),
-all versions; this version [10.5281/zenodo.20653059](https://doi.org/10.5281/zenodo.20653059))
+**MERIT-FlowTopo** ([10.5281/zenodo.20653059](https://doi.org/10.5281/zenodo.20653059))
 holds the structures: for every region the depth-first sequence, the
 conflict-free downstream and as-late-as-possible layerings and the subbasin
 partition; for Region 43 (southern China) all eight, so the alternatives can be
 compared somewhere. 978 GB uncompressed, 50 GB compressed.
 
-**MERIT-DrainAttr** ([10.5281/zenodo.20686664](https://doi.org/10.5281/zenodo.20686664),
-all versions; this version [10.5281/zenodo.20686665](https://doi.org/10.5281/zenodo.20686665))
+**MERIT-DrainAttr** ([10.5281/zenodo.20686665](https://doi.org/10.5281/zenodo.20686665))
 holds the kernels run over those structures: flow length downstream, flow
 length upstream and Strahler stream order for every region, and upstream
 drainage area for Region 43 only, since MERIT Hydro already distributes it
 globally. 622 GB uncompressed, 60 GB compressed.
 
-**MERIT-FullBasin** ([10.5281/zenodo.20344112](https://doi.org/10.5281/zenodo.20344112),
-all versions; this version [10.5281/zenodo.20344113](https://doi.org/10.5281/zenodo.20344113))
+**MERIT-FullBasin** ([10.5281/zenodo.20344113](https://doi.org/10.5281/zenodo.20344113))
 is the companion dataset that divides the network into 96 hydrologically
 independent regions, the 65 continental ones being those above.
 
-**MERIT-FlowTopo code** ([10.5281/zenodo.22227621](https://doi.org/10.5281/zenodo.22227621),
-all versions [10.5281/zenodo.22227620](https://doi.org/10.5281/zenodo.22227620))
+**MERIT-FlowTopo code** ([10.5281/zenodo.22227621](https://doi.org/10.5281/zenodo.22227621))
 is the record the paper cites for code: the C implementation that produced
 the two records above, the scripts and data behind every figure, and an
 archived copy of this package at v1.0.
