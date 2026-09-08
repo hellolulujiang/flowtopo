@@ -8,8 +8,9 @@ Orderings, layerings and partitions for D8 flow networks, in Python.
 A D8 flow-direction grid fixes which cells must be done before which: a cell
 needs its upstream neighbours first, or, for some kernels, its downstream one.
 FlowTopo works that order out once, from the grid alone, and saves it.
-Anything that walks the network in drainage order (drainage area, flow
-length, stream order, or the upstream-to-downstream step of a routing scheme)
+Anything that walks the network in drainage order (upstream drainage area,
+flow length, Strahler stream order, or the upstream-to-downstream step of a
+routing scheme)
 then reads the saved order instead of working it out again.
 
 This repository is the Python reference implementation with one example
@@ -45,11 +46,12 @@ strord = topo.strahler_order(                      # on cells draining ≥ 10 km
 upa_grid = topo.to_2d(upa)                         # back on the raster grid
 ```
 
-The same kernels on threads, a layer at a time (needs numba):
+Three of the kernels also run on threads, a layer at a time (needs numba);
+Strahler stream order runs serially only:
 
 ```python
 from flowtopo import parallel
-upa = parallel.upstream_area(topo, layering="cfds", manner="push")
+upa = parallel.upstream_area(topo, layering="cfds", manner="push")   # push is safe only under cfds
 ```
 
 ## Example data
@@ -60,9 +62,10 @@ columns at 3 arc-seconds, 93,432 valid cells, 731 km², cut from
 and kept under its CC BY-NC 4.0 terms ([`DATA_NOTICE.md`](DATA_NOTICE.md)).
 The GeoJSON files are the basin boundary and the outlet.
 
-Any D8 GeoTIFF in the same convention works: codes are powers of two clockwise
-from east. By default 0 and 255 are terminals and 247 is nodata; a nodata
-value declared in the file overrides that default.
+Any D8 GeoTIFF in the same convention works, as long as it is in longitude
+and latitude: the area and distance kernels treat the grid as degrees. Codes
+are powers of two clockwise from east; 0 and 255 are terminals; 247 is always
+nodata, and a nodata value declared in the file is excluded as well.
 
 Work one region or basin at a time. Indices are int32, so a raster must stay
 under 2.1 billion cells, nodata included; the 38° × 38° regions of
@@ -91,9 +94,9 @@ full-size MP4, or see all nine on the
 *Three parallel layerings. Layers run in order; the cells of one layer run at the same time.*
 
 <table>
-<tr><th align="center">as soon as possible<br><code>layering="asap"</code></th><th align="center">conflict-free downstream<br><code>layering="cfds"</code></th><th align="center">as late as possible<br><code>layering="alap"</code></th></tr>
+<tr><th align="center">as-soon-as-possible<br><code>layering="asap"</code></th><th align="center">conflict-free downstream<br><code>layering="cfds"</code></th><th align="center">as-late-as-possible<br><code>layering="alap"</code></th></tr>
 <tr><td align="center"><a href="https://hellolulujiang.github.io/flowtopo/media/lyr_asap.mp4"><img src="docs/media/lyr_asap.gif" width="270"></a></td><td align="center"><a href="https://hellolulujiang.github.io/flowtopo/media/lyr_cfds.mp4"><img src="docs/media/lyr_cfds.gif" width="270"></a></td><td align="center"><a href="https://hellolulujiang.github.io/flowtopo/media/lyr_alap.mp4"><img src="docs/media/lyr_alap.gif" width="270"></a></td></tr>
-<tr><td valign="top" align="center">every cell in the earliest layer its donors allow</td><td valign="top" align="center">as soon as possible, plus: no two cells in a layer share a receiver</td><td valign="top" align="center">every cell as late as the longest flow path allows; the most evenly filled layers in practice</td></tr>
+<tr><td valign="top" align="center">every cell in the earliest layer its donors allow</td><td valign="top" align="center">as-soon-as-possible, plus: no two cells in a layer share a receiver</td><td valign="top" align="center">every cell as late as the longest flow path allows; the most evenly filled layers in practice</td></tr>
 </table>
 
 ### Several processors: which cells where?
@@ -122,8 +125,8 @@ full-size MP4, or see all nine on the
 Three things to know:
 
 * An ordering is built in one direction and can be read in either. Kernels
-  that gather into the receiver (drainage area, flow length upstream, Strahler
-  order) walk upstream to downstream; flow length downstream walks the other
+  that gather into the receiver (upstream drainage area, flow length upstream,
+  Strahler stream order) walk upstream to downstream; flow length downstream walks the other
   way. The kernels pick the direction themselves; `topo.ordering("dfs", "u2d")`
   asks for one explicitly.
 * The layer count is set by the longest flow path, and the conflict-free rule
@@ -149,19 +152,20 @@ Conflicting writes inside a layer, example basin (93,432 cells):
 
 | layering | conflicting writes |
 | --- | --- |
-| as soon as possible | 12,122 |
+| as-soon-as-possible | 12,122 |
 | **conflict-free downstream** | **0** |
-| as late as possible | 39,130 |
+| as-late-as-possible | 39,130 |
 
 The count is a property of the layering and can be checked before running.
 A test run cannot replace that check, because a race does not show up every
 time. Under the conflict-free layering no two cells in a layer share a
 receiver, so the push adds in the same order every time and gives
-bit-identical results at any thread count. Strahler order cannot be done with
+bit-identical results at any thread count. Strahler stream order cannot be done with
 one atomic operation, because its confluence rule is a comparison and a
 count, not an addition; the only parallel push for it is under the
-conflict-free layering. If `manner` is not given, FlowTopo picks a safe one
-for the layering.
+conflict-free layering. When `manner` is not given, the `FlowTopo` methods pick a safe one for the
+layering; `parallel.upstream_area` defaults to push, which is safe only under
+`cfds`.
 
 The three serial orderings differ in memory access. Simulated L1 miss rate on
 the example basin: depth-first 10.5%, breadth-first 21.8%, topological sort
@@ -186,8 +190,8 @@ From the paper's benchmark of the C implementation on the 90 m network
   atomic form or the result must be reproducible; pull needs the donor table.
 * **Push for a non-linear kernel, or little RAM** — the conflict-free
   downstream layering with push. No locks, deterministic, only the receiver
-  pointer stored, and the only push that can run Strahler order. Pull also
-  runs Strahler order under any layering and was faster (4.8 s against
+  pointer stored, and the only push that can run Strahler stream order. Pull
+  also runs it under any layering and was faster (4.8 s against
   9.1 s); push wins when the donor table does not fit in memory.
 * **Across processors** — the subbasin partition, one subregion per
   processor, with as many threads per subregion as the processor's memory
@@ -198,7 +202,8 @@ This package runs numba over numpy on far smaller grids, and the ranking is
 not the same: on 16 million cells, push under `cfds` is the fastest threaded
 form and pull is slower than the serial pass, because building and reading
 the donor table costs more than ten threads save. Run `benchmark.py` on your
-machine and your grid before choosing.
+machine before choosing; it times upstream drainage area on synthetic grids
+of the side length you give it.
 
 ## Global products
 
@@ -282,15 +287,14 @@ sequence restricted to them is still a topological sort, and a restricted
 layering still has independent layers, conflict-free rule included, because
 removing cells cannot put a cell before something it depends on, nor make two
 remaining cells depend on each other. A receiver outside the clip becomes an
-outlet when the clip is loaded. Only the kernel values change: drainage area
-on a clip counts the area inside the clip. Clip whole basins when the values
+outlet when the clip is loaded. Only the kernel values change: upstream drainage
+area on a clip counts the area inside the clip. Clip whole basins when the values
 must match the global ones, or take them from MERIT-DrainAttr.
 
 This package is a port of the C code that produced the release. The two were
-written independently and agree on the example basin to floating-point
-rounding in the accumulated area, so a region you build here with
-`FlowTopo.from_raster` carries the same structures as the region you
-download.
+written independently; on the example basin they agree to floating-point
+rounding in the accumulated area. That check has been made on the example
+basin only.
 
 ## Documentation
 
