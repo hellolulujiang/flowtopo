@@ -5,213 +5,31 @@
 
 Orderings, layerings and partitions for D8 flow networks, in Python.
 
-A D8 flow-direction grid fixes the order in which cells must be visited: a
-cell can be processed only after its upstream neighbours, or, for some
-kernels, only after its downstream one. FlowTopo computes that order once,
+A D8 flow-direction grid constrains the order in which cells can be visited:
+a cell can be processed only after its upstream neighbours, or, for some
+kernels, only after its downstream one. FlowTopo builds such an order once,
 from the flow-direction grid alone, and stores it as a reusable structure.
 Any routine that walks the network in drainage order (drainage area, flow
 length, stream order, or the upstream-to-downstream step of a routing scheme)
-can then reuse the structure instead of rebuilding the traversal each time.
+reads the structure instead of rebuilding the traversal each time.
 
-Three kinds of structure are provided:
-
-* **serial orderings** (three): a topological sort of the cells, walked in
-  one pass on one core;
-* **parallel layerings** (three): cells grouped into layers so that cells in
-  the same layer are independent of each other and can run on several
-  threads;
-* **spatial partitions** (two): the network cut into independent subregions,
-  one per processor.
-
-Four kernels are bundled to exercise the structures: upstream drainage area,
-flow length downstream (`distance_to_outlet`), flow length upstream
-(`longest_upstream_path`) and Strahler stream order. They are
-test cases, not the purpose of the package. Each kernel runs on every
-structure and the results are cross-checked.
-
-In the snippets below, `topo` is a `FlowTopo` object built once from a
-flow-direction raster; [Quick start](#quick-start) shows how.
-
-This repository holds the Python reference implementation and one worked
-example basin. The global 90 m products computed with the same method are
-released separately on Zenodo; see [Global products](#global-products). The
-companion paper (Jiang et al.) is in preparation and has no link yet.
-
-A narrated video walks through the structures and the three ways of moving a
-value from a cell to its receiver: <https://youtu.be/tE5K2wM3TTY>. The
-animations in this README are reduced previews. Each has a **full-size MP4**
-link beneath it, and all files are in [`docs/media`](docs/media).
-
-## Serial orderings
-
-An ordering is a topological sort of the valid cells. One pass over it
-computes any kernel, because every cell is visited after whatever it needs.
-Which end that is depends on the kernel: drainage area needs a cell's donors
-first, flow length needs its receiver first. A sequence is stored in one
-direction and reversed on demand, and the kernels do the reversing.
-
-All nine animations play in the browser on the
-[animation page](https://hellolulujiang.github.io/flowtopo/).
-
-| topological sort from the sources<br>`ordering="topo"` | breadth-first from the pit<br>`ordering="bfs"` | depth-first from the pit<br>`ordering="dfs"` |
-| :---: | :---: | :---: |
-| [![](docs/media/seq_topo.gif)](https://hellolulujiang.github.io/flowtopo/media/seq_topo.mp4) | [![](docs/media/seq_bfs.gif)](https://hellolulujiang.github.io/flowtopo/media/seq_bfs.mp4) | [![](docs/media/seq_dfs.gif)](https://hellolulujiang.github.io/flowtopo/media/seq_dfs.mp4) |
-| a cell is appended once all its donors are done | cells in order of hop count from the pit | one tributary subtree at a time |
-| [full-size MP4](https://hellolulujiang.github.io/flowtopo/media/seq_topo.mp4) | [full-size MP4](https://hellolulujiang.github.io/flowtopo/media/seq_bfs.mp4) | [full-size MP4](https://hellolulujiang.github.io/flowtopo/media/seq_dfs.mp4) |
-
-The three differ in memory access pattern. Depth-first has the lowest simulated
-L1 miss rate on the example basin: 10.5%, against 21.8% (breadth-first) and
-37.1% (topological sort). Those are one alignment of the two arrays the
-traversal reads, the one where they collide in every cache set. Shift them
-apart and the numbers fall to about 8.8%, 14.2% and 36.9%. The order does not
-move, at any alignment tried.
-
-**Direction.** An ordering is built in one direction and reversed on demand.
-Depth-first and breadth-first start at the pit, so they come out downstream to
-upstream (`d2u`, position 0 is a pit); the topological sort starts at the
-headwaters, so it comes out upstream to downstream (`u2d`, position 0 is a
-headwater). The two are reverses of each other.
-
-Which one a kernel needs follows from the way its values travel. Drainage area,
-flow length upstream and Strahler order accumulate **into** the receiver and
-need `u2d`; flow length downstream reads **from** the receiver and needs `d2u`. The
-kernels flip the sequence for you, so `topo.upstream_area(ordering="dfs")`
-walks the depth-first order upstream to downstream even though it was built the
-other way. Ask for a direction explicitly with
-`topo.ordering("dfs", "u2d")`.
-
-## Parallel layerings
-
-A layering assigns every cell a layer index such that cells in the same layer
-are independent of each other. Layers run in order; cells within a layer run
-in parallel. Layer 0 holds the headwaters.
-
-| as soon as possible<br>`layering="asap"` | conflict-free downstream<br>`layering="cfds"` | as late as possible<br>`layering="alap"` |
-| :---: | :---: | :---: |
-| [![](docs/media/lyr_asap.gif)](https://hellolulujiang.github.io/flowtopo/media/lyr_asap.mp4) | [![](docs/media/lyr_cfds.gif)](https://hellolulujiang.github.io/flowtopo/media/lyr_cfds.mp4) | [![](docs/media/lyr_alap.gif)](https://hellolulujiang.github.io/flowtopo/media/lyr_alap.mp4) |
-| every cell in the earliest layer its donors allow | as soon as possible, plus one rule: no two cells in a layer share a receiver | every cell in the latest layer possible |
-| [full-size MP4](https://hellolulujiang.github.io/flowtopo/media/lyr_asap.mp4) | [full-size MP4](https://hellolulujiang.github.io/flowtopo/media/lyr_cfds.mp4) | [full-size MP4](https://hellolulujiang.github.io/flowtopo/media/lyr_alap.mp4) |
-
-The minimum layer count is set by the longest flow path. The conflict-free rule
-may add a few layers; on the example basin it adds none (949 layers for all
-three).
-
-Layerings are built `u2d`, layer 0 at the headwaters. The downstream-propagating
-kernel needs them the other way round, and flips them itself;
-`topo.decomposition("cfds", "d2u")` gives that view directly.
-
-## Spatial partitions
-
-A layering spreads work across threads that share memory. Splitting the network
-across processors needs a second cut, along the drainage hierarchy, so that no
-value crosses a subregion boundary while a kernel runs.
-
-Set `n_parts` to the number of processors: one subregion each, so a subregion's
-working set stays in its own memory. The paper's benchmark uses four, because
-the server has four Xeon Platinum 8270 processors, each a NUMA node with 26
-cores; the thread count inside each subregion was set where that server's
-memory bandwidth saturated.
-
-[![](docs/media/partition_schematic.png)](docs/media/partition_schematic.png)
-
-*Two basins mapped onto two subregions.* `level="basin"` keeps each basin
-whole, so the 62-cell basin and the 11-cell basin cannot be balanced.
-`level="subbasin"` walks up the dominant basin's mainstem, and a tributary
-subtree moves to the lighter subregion.
-
-Whole basins cannot be split, so one large basin leaves the other processors
-idle. The bundled example is one basin, so it shows this plainly:
-
-```python
-topo.partition(n_parts=4, level="basin")[1]      # [93432, 0, 0, 0]
-topo.partition(n_parts=4, level="subbasin")[1]   # [23121, 23121, 23121, 23120]
-```
-
-Subbasin-level walks upstream from the outlet, taking the larger tributary at
-each confluence. That isolates the mainstem; the tributary subtrees hanging off
-it are dealt to the lighter subregions, and the mainstem runs in a second stage
-once they finish. Its cells are marked `flowtopo.MAINSTEM`. That is why the
-four subregion loads above come to 92,483 rather than 93,432: the 949 mainstem
-cells are held back for the second stage and do not count as first-stage work.
-
-## Write conflicts
-
-Whichever structure carries the traversal, a kernel still has to move a value
-from a cell to its receiver. There are three ways to do it:
-
-| pull | atomic push | push |
-| :---: | :---: | :---: |
-| [![](docs/media/manner_pull.gif)](https://hellolulujiang.github.io/flowtopo/media/manner_pull.mp4) | [![](docs/media/manner_atomic_push.gif)](https://hellolulujiang.github.io/flowtopo/media/manner_atomic_push.mp4) | [![](docs/media/manner_push.gif)](https://hellolulujiang.github.io/flowtopo/media/manner_push.mp4) |
-| each receiver reads its donors; needs the upstream table | donors write through atomics; correct, but float sums are not reproducible | donors write directly; deterministic, no locks; requires the conflict-free layering |
-| [full-size MP4](https://hellolulujiang.github.io/flowtopo/media/manner_pull.mp4) | [full-size MP4](https://hellolulujiang.github.io/flowtopo/media/manner_atomic_push.mp4) | [full-size MP4](https://hellolulujiang.github.io/flowtopo/media/manner_push.mp4) |
-
-A push is only safe if no two cells in a layer write to the same receiver.
-Conflict counts on the example basin (93,432 cells):
-
-| layering | conflicting writes inside a layer |
-| --- | --- |
-| as soon as possible | 12,122 |
-| **conflict-free downstream** | **0** |
-| as late as possible | 39,130 |
-
-The count is a property of the layering and can be checked before running. A
-test run is not a reliable check: a race does not always trigger. Strahler
-order has no single-atomic form, because its confluence rule is a comparison
-and a count rather than one addition, so its only parallel push is under the
-conflict-free layering.
-
-Because no two cells in a layer share a receiver, the sums always happen in the
-same order: the conflict-free push returns bit-identical results at any thread
-count, which an atomic push cannot promise. If `manner` is not given, FlowTopo
-picks a safe one for the layering.
-
-## Which structure to use
-
-From the paper's benchmark on the full 90 m network (22.2 billion cells,
-65 regions):
-
-* **One sweep, one core** — the depth-first ordering. Up to 5.1× faster than
-  the slowest serial ordering; subtree contiguity drops the L3 miss rate from
-  37% to about 6%. It is also the baseline to measure parallel speedup
-  against; a slower baseline overstates the speedup.
-* **Repeated traversal** (calibration, ensembles) — the as-late-as-possible
-  layering. Fastest in parallel for every kernel: each layer's working set
-  stays in cache. Under it, atomic push beats pull for the sum and maximum
-  kernels (71.1 s against 85.1 s for flow length upstream in the paper); pull
-  is the choice where the kernel has no atomic form, or where the sum must be
-  reproducible, and it must store the donor table.
-* **Non-linear kernels under push, or when RAM is tight** — the conflict-free
-  downstream layering with push. Lock-free and deterministic, stores only the
-  receiver pointer, and the only push that runs Strahler order at all. Pull
-  runs it under any layering, and in the paper's C run pull under
-  as-late-as-possible was faster (4.8 s against 9.1 s); push wins when the
-  donor table does not fit.
-* **Across processors** — the subbasin partition, one subregion per processor,
-  each threaded to the point at which its processor's memory bandwidth
-  saturates. Where that point lies depends on the processor; the paper's
-  Fig. 15 shows it for the server tested, and it has to be measured again on
-  other hardware.
-
-The structures are computed once from the static D8 field and reused without
-limit.
-
-Those rankings come from the paper's C run at continental scale. This package
-is numba over numpy at a much smaller size, and it does not reproduce them
-term for term. On a 16-million-cell grid here, push under `cfds` is the
-fastest parallel form, and pull loses even to the serial sequence: building
-and reading the donor table costs more than ten threads save. The structures
-are the same either way. Which one wins depends on your machine and your grid,
-so measure with `benchmark.py` before choosing.
+This repository is the Python reference implementation with one example
+basin. The structures for the 90 m MERIT Hydro network are on Zenodo
+([Global products](#global-products)). The companion paper (Jiang et al.) is
+in preparation. A ten-minute narrated video shows the structures and the three
+ways of moving a value to its receiver: <https://youtu.be/tE5K2wM3TTY>.
 
 ## Install
 
 ```sh
-pip install -e .            # numpy + rasterio
-pip install -e ".[speed]"   # + numba, for threaded kernels
+git clone https://github.com/hellolulujiang/flowtopo.git
+cd flowtopo
+pip install -e .            # numpy + rasterio: structures and serial kernels
+pip install -e ".[speed]"   # adds numba: the threaded kernels need it
 ```
 
-Needs Python 3.10 or newer. The tests run on 3.10, 3.11 and 3.12. Without
-numba everything still runs, in pure Python.
+Python 3.10 or newer. Without numba the structures and the serial kernels run
+in pure Python; `flowtopo.parallel` raises rather than pretending to thread.
 
 ## Quick start
 
@@ -220,117 +38,200 @@ import flowtopo
 
 topo = flowtopo.FlowTopo.from_raster("data/dir_example.tif")
 
-upa = topo.upstream_area(ordering="dfs")                      # serial
-upa = topo.upstream_area(layering="cfds", manner="push")      # a layer at a time
-ldn = topo.distance_to_outlet(ordering="dfs")
-lup = topo.longest_upstream_path(ldn, ordering="dfs")
-strord = topo.strahler_order(ordering="dfs",
-                             channel_mask=topo.channel_mask(upa, 10.0))
+upa = topo.upstream_area(ordering="dfs")           # km², one serial pass
+ldn = topo.distance_to_outlet(ordering="dfs")      # flow length downstream, m
+strord = topo.strahler_order(                      # on cells draining ≥ 10 km²
+    ordering="dfs", channel_mask=topo.channel_mask(upa, 10.0))
 
-part, load = topo.partition(n_parts=4, level="subbasin")      # across processors
-
-topo.to_2d(upa)                                               # back on the grid
+upa_grid = topo.to_2d(upa)                         # back on the raster grid
 ```
 
-With numba, the same kernels with threads:
+The same kernels on threads, a layer at a time (needs numba):
 
 ```python
 from flowtopo import parallel
 upa = parallel.upstream_area(topo, layering="cfds", manner="push")
 ```
 
-Run everything on the example basin:
-
-```sh
-python example.py       # every structure, kernel and manner; ends PASS or FAIL
-python benchmark.py     # serial vs threaded at several grid sizes
-```
-
-## Documentation
-
-* [`docs/user-guide.md`](docs/user-guide.md) — choosing an ordering, a layering
-  and a manner; threads; raster I/O.
-* [`docs/methods.md`](docs/methods.md) — each method with its origin and its
-  complexity.
-* [`examples/quickstart.ipynb`](examples/quickstart.ipynb) — a notebook on the
-  bundled data, stored with its output so it reads without running anything.
-* [`docs/review-checklist.md`](docs/review-checklist.md) — what has been
-  checked and how, the bugs those checks found, and the angles still
-  unattacked.
-
 ## Example data
 
 `data/dir_example.tif` is the example basin of the paper: 292 rows by 614
 columns at 3 arc-seconds, 93,432 valid cells, 731 km², cut from
-[MERIT Hydro](https://doi.org/10.1029/2019WR024873) (Yamazaki et al., 2019).
+[MERIT Hydro](https://doi.org/10.1029/2019WR024873) (Yamazaki et al., 2019)
+and kept under its CC BY-NC 4.0 terms ([`DATA_NOTICE.md`](DATA_NOTICE.md)).
 The GeoJSON files are the basin boundary and the outlet.
 
 Any D8 GeoTIFF in the same convention works: codes are powers of two clockwise
-from east, with 0 and 255 terminal. The file's own nodata value is honoured
-too, which matters because 255 means a terminal here, not nodata.
+from east. By default 0 and 255 are terminals and 247 is nodata; a nodata
+value declared in the file overrides that default.
 
-```sh
-python example.py --data my_dir.tif
-```
+Work one region or basin at a time. Indices are int32, so a raster must stay
+under 2.1 billion cells, nodata included; the 38° × 38° regions of
+MERIT-FullBasin do.
 
-## Two ways to use this
+## What you get
 
-### Read the released structures
+Eight structures and three ways to move a value, all built from the D8 grid:
 
-The structures for the whole 90 m network are on Zenodo, one GeoTIFF per
-region for the 65 continental regions (see [Global products](#global-products)).
-They index into the MERIT Hydro flow-direction grid, which is not redistributed
-here: get it from <https://global-hydrodynamics.github.io/MERIT_Hydro/> under
-its own terms. Which MERIT Hydro tiles a region needs, and the row and column
-offset of each, is listed at <https://fullhydro.org/fullbasin/regions/>. Region
-boxes sit on whole degrees and one degree is 1,200 cells, so a region is cut
-from the global rasters by integer arithmetic, with no resampling.
+| | keyword | what it is |
+| --- | --- | --- |
+| **Serial orderings** (one core, one pass) | | |
+| topological sort from the sources | `ordering="topo"` | a cell is appended once all its donors are done |
+| breadth-first from the pit | `ordering="bfs"` | cells in order of hop count from the pit |
+| depth-first from the pit | `ordering="dfs"` | one tributary subtree at a time; best cache locality |
+| **Parallel layerings** (threads on one processor) | | |
+| as soon as possible | `layering="asap"` | every cell in the earliest layer its donors allow |
+| conflict-free downstream | `layering="cfds"` | as soon as possible, plus: no two cells in a layer share a receiver |
+| as late as possible | `layering="alap"` | every cell as late as the longest flow path allows; the most evenly filled layers in practice |
+| **Spatial partitions** (one subregion per processor) | | |
+| basin-level | `level="basin"` | whole basins dealt to subregions |
+| subbasin-level | `level="subbasin"` | the dominant basin split along its mainstem to balance the load |
+| **Propagation manners** (how a value reaches the receiver) | | |
+| pull | `manner="pull"` | each receiver reads its donors; needs the donor table |
+| atomic push | `manner="atomic_push"` | donors write through atomics; float sums not reproducible |
+| push | `manner="push"` | donors write directly; deterministic; safe only under `cfds` |
 
-You need not work with a whole region. Any subset keeps the structures valid: a
-released sequence filtered to the cells you keep is still a topological sort of
-them, and a filtered layering keeps its layers independent, the conflict-free
-rule included, because dropping cells can neither move a cell ahead of
-something it depends on nor make two survivors depend on each other. What a
-subset changes is the kernel's answer, not the structure: drainage area
-computed on a clip counts only the area inside the clip. Clip whole basins when
-the values must match the global ones, or read them from MERIT-DrainAttr.
+Three things to know:
 
-### Build them from your own flow directions
+* An ordering is built in one direction and reversed on demand. Kernels that
+  accumulate into the receiver (drainage area, flow length upstream, Strahler
+  order) walk upstream to downstream; flow length downstream walks the other
+  way. The kernels flip the sequence for you; `topo.ordering("dfs", "u2d")`
+  asks for a direction explicitly.
+* Layers run in order, cells within a layer in parallel. The layer count is
+  set by the longest flow path, and the conflict-free rule may add layers (on
+  the example basin it adds none: 949 for all three). In the two
+  headwater-anchored schemes layer 0 holds every headwater; in
+  as-late-as-possible it holds only the farthest ones.
+* Partitions cut along the drainage hierarchy, so no value crosses a subregion
+  boundary while a kernel runs. `topo.partition(n_parts, level)` returns a
+  label per cell and the load per subregion. Subbasin-level marks the mainstem
+  `flowtopo.MAINSTEM` and leaves it to a separate stage: after the tributary
+  subregions for kernels that accumulate downstream, before them for flow
+  length downstream.
 
-Any D8 GeoTIFF in the convention above works, and this is the same code that
-produced the release, so a region you build and a region you download are the
-same thing:
+Four kernels are bundled to exercise the structures: upstream drainage area,
+flow length downstream (`distance_to_outlet`), flow length upstream
+(`longest_upstream_path`) and Strahler stream order. Each runs on every
+supported combination of structure and manner, and the results are
+cross-checked.
 
-```python
-import flowtopo
+<details>
+<summary>Nine animations: the six orderings and layerings, the three manners</summary>
 
-topo = flowtopo.FlowTopo.from_raster("my_dir.tif")
+All play in the browser on the [animation page](https://hellolulujiang.github.io/flowtopo/);
+each GIF links to its full-size MP4.
 
-seq = topo.ordering("dfs")                 # one of three orderings
-layers, n = topo.layering("cfds")          # one of three layerings
-part, load = topo.partition(n_parts=4)     # one of two partitions
+| topological sort from the sources | breadth-first from the pit | depth-first from the pit |
+| :---: | :---: | :---: |
+| [![](docs/media/seq_topo.gif)](https://hellolulujiang.github.io/flowtopo/media/seq_topo.mp4) | [![](docs/media/seq_bfs.gif)](https://hellolulujiang.github.io/flowtopo/media/seq_bfs.mp4) | [![](docs/media/seq_dfs.gif)](https://hellolulujiang.github.io/flowtopo/media/seq_dfs.mp4) |
 
-upa = topo.upstream_area(ordering="dfs")   # any kernel, on any structure
-```
+| as soon as possible | conflict-free downstream | as late as possible |
+| :---: | :---: | :---: |
+| [![](docs/media/lyr_asap.gif)](https://hellolulujiang.github.io/flowtopo/media/lyr_asap.mp4) | [![](docs/media/lyr_cfds.gif)](https://hellolulujiang.github.io/flowtopo/media/lyr_cfds.mp4) | [![](docs/media/lyr_alap.gif)](https://hellolulujiang.github.io/flowtopo/media/lyr_alap.mp4) |
 
-Work one region or basin at a time. Indices are int32, so a grid must stay
-under 2.1 billion cells; the 38° × 38° regions of MERIT-FullBasin do.
+| pull | atomic push | push |
+| :---: | :---: | :---: |
+| [![](docs/media/manner_pull.gif)](https://hellolulujiang.github.io/flowtopo/media/manner_pull.mp4) | [![](docs/media/manner_atomic_push.gif)](https://hellolulujiang.github.io/flowtopo/media/manner_atomic_push.mp4) | [![](docs/media/manner_push.gif)](https://hellolulujiang.github.io/flowtopo/media/manner_push.mp4) |
+
+[![](docs/media/partition_schematic.png)](docs/media/partition_schematic.png)
+
+*Two basins mapped onto two subregions.* `level="basin"` keeps each basin
+whole, so the 62-cell basin and the 11-cell basin cannot be balanced.
+`level="subbasin"` walks up the dominant basin's mainstem, and a tributary
+subtree moves to the lighter subregion.
+
+</details>
+
+<details>
+<summary>Write conflicts and cache locality on the example basin</summary>
+
+A push is only safe if no two cells in a layer write to the same receiver.
+Conflicting writes inside a layer, example basin (93,432 cells):
+
+| layering | conflicting writes |
+| --- | --- |
+| as soon as possible | 12,122 |
+| **conflict-free downstream** | **0** |
+| as late as possible | 39,130 |
+
+The count is a property of the layering and can be checked before running; a
+test run is not a reliable check, because a race does not always trigger.
+Because no two cells in a layer share a receiver, the conflict-free push sums
+in the same order every time and returns bit-identical results at any thread
+count. Strahler order has no single-atomic form, because its confluence rule
+is a comparison and a count rather than one addition, so its only parallel
+push is under the conflict-free layering. If `manner` is not given, FlowTopo
+picks a safe one for the layering.
+
+The three serial orderings differ in memory access. Simulated L1 miss rate on
+the example basin: depth-first 10.5%, breadth-first 21.8%, topological sort
+37.1% (`flowtopo.locality.miss_rates`). The figures shift by a few points with
+how the two arrays are aligned in memory; their order does not.
+
+</details>
+
+## Which structure to use
+
+From the paper's benchmark of the C implementation on the 90 m network
+(22.2 billion cells, 65 regions):
+
+* **One sweep, one core** — the depth-first ordering. Up to 5.1× faster than
+  the slowest serial ordering; subtree contiguity drops the L3 miss rate from
+  37% to about 6%. It is also the baseline to measure parallel speedup
+  against; a slower baseline overstates the speedup.
+* **Repeated traversal** (calibration, ensembles) — the as-late-as-possible
+  layering, fastest in parallel for all four kernels because each layer's
+  working set stays in cache. Under it, atomic push beat pull for the sum and
+  maximum kernels (71.1 s against 85.1 s for flow length upstream); pull is
+  the choice where the kernel has no atomic form, or where the sum must be
+  reproducible, and it must store the donor table.
+* **Non-linear kernels under push, or when RAM is tight** — the conflict-free
+  downstream layering with push. Lock-free and deterministic, stores only the
+  receiver pointer, and the only push that runs Strahler order at all. Pull
+  runs it under any layering and was faster under as-late-as-possible (4.8 s
+  against 9.1 s); push wins when the donor table does not fit.
+* **Across processors** — the subbasin partition, one subregion per processor,
+  each threaded to the point at which its processor's memory bandwidth
+  saturates. Where that point lies depends on the processor; the paper's
+  Fig. 15 shows it for the server tested, and it has to be measured again on
+  other hardware.
+
+This package is numba over numpy at a much smaller size and does not
+reproduce those rankings term for term: on a 16-million-cell grid, push under
+`cfds` is the fastest threaded form and pull loses even to the serial
+sequence, because building and reading the donor table costs more than ten
+threads save. Which one wins depends on your machine and your grid, so
+measure with `benchmark.py` before choosing.
 
 ## Global products
 
-This repository holds the method and one example basin. Applied to the whole
-90 m MERIT Hydro network, it produces two Zenodo records, both as per-region
-GeoTIFFs for 65 regions.
-
-### The structures
+Applied to the 90 m MERIT Hydro network with the C implementation, the same
+methods produce two Zenodo records of per-region GeoTIFFs. Both cover the 65
+continental regions of MERIT-FullBasin; the 29 island groups and the two
+regions straddling the antimeridian are not included.
 
 **MERIT-FlowTopo** ([10.5281/zenodo.20653058](https://doi.org/10.5281/zenodo.20653058),
 all versions; this version [10.5281/zenodo.20653059](https://doi.org/10.5281/zenodo.20653059))
-holds the traversal structures themselves. Every region carries the
-depth-first sequence, the conflict-free downstream and as-late-as-possible
-layerings, and the subbasin partition; Region 43 (South China) carries all
-eight, so the alternatives can be compared somewhere. 978 GB uncompressed,
-50 GB compressed.
+holds the structures: for every region the depth-first sequence, the
+conflict-free downstream and as-late-as-possible layerings and the subbasin
+partition; for Region 43 (southern China) all eight, so the alternatives can be
+compared somewhere. 978 GB uncompressed, 50 GB compressed.
+
+**MERIT-DrainAttr** ([10.5281/zenodo.20686664](https://doi.org/10.5281/zenodo.20686664),
+all versions; this version [10.5281/zenodo.20686665](https://doi.org/10.5281/zenodo.20686665))
+holds the kernels run over those structures: flow length downstream, flow
+length upstream and Strahler stream order for every region, and upstream
+drainage area for Region 43 only, since MERIT Hydro already distributes it
+globally. 622 GB uncompressed, 60 GB compressed.
+
+**MERIT-FullBasin** ([10.5281/zenodo.20344112](https://doi.org/10.5281/zenodo.20344112),
+all versions; this version [10.5281/zenodo.20344113](https://doi.org/10.5281/zenodo.20344113))
+is the companion dataset that divides the network into 96 hydrologically
+independent regions, the 65 continental ones being those above.
+
+<details>
+<summary>The structures and the kernel products over the 65 regions</summary>
 
 [![](docs/media/global_orderings.png)](docs/media/global_orderings.png)
 
@@ -338,111 +239,98 @@ eight, so the alternatives can be compared somewhere. 978 GB uncompressed,
 
 [![](docs/media/global_partitions.png)](docs/media/global_partitions.png)
 
-*All eight structures, drawn over the whole network: three serial orderings,
-three parallel layerings, two spatial partitions. The release itself carries
-four of them per region, and all eight for Region 43.*
-
-Because the D8 field does not change, these are computed once and reused
-without limit. That is the point: a cost the tools surveyed in the paper pay on
-every run becomes a read.
-
-### What the structures compute
-
-**MERIT-DrainAttr** ([10.5281/zenodo.20686664](https://doi.org/10.5281/zenodo.20686664),
-all versions; this version [10.5281/zenodo.20686665](https://doi.org/10.5281/zenodo.20686665))
-is the four kernels run over those structures: a baseline, so the variables
-almost everyone wants need not be recomputed either.
-
 [![](docs/media/kernel_products.png)](docs/media/kernel_products.png)
 
-Flow length downstream, flow length upstream and Strahler stream order for
-every region; upstream drainage area for Region 43 only, since MERIT Hydro
-already distributes it globally. 622 GB uncompressed, 60 GB compressed.
+</details>
 
-Anything else that walks the network in drainage order is one pass over a
-structure you already have: a different accumulation, the inflow step of a
-routing scheme, a variable nobody has asked for yet. That is
-why the release is the structures and not the variables.
+### Using the released structures
 
-### The input partition
+The structures index into the MERIT Hydro flow-direction grid, which is not
+redistributed here: get it from
+<https://global-hydrodynamics.github.io/MERIT_Hydro/> under its own terms.
+Which MERIT Hydro tiles a region needs, and the row and column offset of each,
+is listed at <https://fullhydro.org/fullbasin/regions/>. Region boxes sit on
+whole degrees and one degree is 1,200 cells, so a region is cut from the
+global rasters by integer arithmetic, with no resampling.
 
-**MERIT-FullBasin** ([10.5281/zenodo.20344112](https://doi.org/10.5281/zenodo.20344112),
-all versions; this version [10.5281/zenodo.20344113](https://doi.org/10.5281/zenodo.20344113))
-divides the network into 96 hydrologically independent regions; the 65
-continental ones are what everything above is organised by. It comes from the companion dataset, not from here.
+You need not work with a whole region. A released sequence filtered to the
+cells you keep is still a topological sort of them, and a filtered layering
+keeps its layers independent, the conflict-free rule included, because
+dropping cells can neither move a cell ahead of something it depends on nor
+make two survivors depend on each other. A receiver that falls outside the
+clip becomes an outlet when the clip is loaded. What a clip changes is the
+kernel's answer, not the structure: drainage area computed
+on a clip counts only the area inside it. Clip whole basins when the values
+must match the global ones, or read them from MERIT-DrainAttr.
 
-## Acknowledgements
+This package is a port of the C code that produced the release. The two were
+written independently and agree on the example basin to floating-point
+rounding in the accumulated area, so a region you build here with
+`FlowTopo.from_raster` carries the same structures as the region you
+download.
 
-**MERIT Hydro** (Yamazaki et al., 2019;
-[10.1029/2019WR024873](https://doi.org/10.1029/2019WR024873)) provides the
-flow-direction field everything here traverses: the example basin is cut from
-it, and the global products are built on its 90 m network. The bundled excerpt
-keeps its CC BY-NC 4.0 terms.
+## Documentation
 
-The representation this package works on comes from
-[pyflwdir](https://github.com/Deltares/pyflwdir) (D. Eilander, Deltares and the
-Institute for Environmental Studies, Vrije Universiteit Amsterdam; MIT licence;
-[10.5281/zenodo.4287337](https://doi.org/10.5281/zenodo.4287337)). What FlowTopo
-takes from it:
-
-* **the flat downstream-pointer array** — for every cell, the linear index of
-  the cell it drains into, with a pit pointing at itself. Every structure and
-  every kernel here is derived from that one array;
-* **the D8 decoding conventions** — codes as powers of two clockwise from east,
-  0 and 255 terminal, 247 nodata, and a cell draining off the grid or into
-  nodata treated as a pit;
-* **the donor-count array** and its sentinel convention;
-* **the chain-tracing rank and the breadth-first sequence builder**, which
-  appear here in the variants set out in [`docs/methods.md`](docs/methods.md).
-
-No pyflwdir source is included. The code here was written against those
-conventions rather than copied from them, and `FlowTopo.from_d8` takes the same
-array `pyflwdir.from_array(d8, ftype="d8")` takes, so the two read the same
-rasters.
-
-The three layerings, the conflict-free downstream rule, the propagation
-manners, the locality metrics and the benchmark drivers are this project's own.
-
-**Claude** (Anthropic) helped prepare this repository: the Python port of the
-C implementation, the tests, the documentation and the packaging were drafted
-with it and checked by the authors, and the commit history records where. The
-structures, the algorithms and the results they produce are the authors' own
-work, described in the companion manuscript.
+* [`docs/user-guide.md`](docs/user-guide.md) — choosing an ordering, a layering
+  and a manner; threads; raster I/O.
+* [`docs/methods.md`](docs/methods.md) — each method with its origin and its
+  complexity, and what is borrowed from pyflwdir.
+* [`examples/quickstart.ipynb`](examples/quickstart.ipynb) — a notebook on the
+  bundled data, stored with its output.
+* [`docs/review-checklist.md`](docs/review-checklist.md) — what has been
+  checked and how, the bugs those checks found, and the angles still
+  unattacked.
 
 ## Verification
 
-Expected outputs for the example basin are stored with the tests, so a fresh
-clone verifies itself:
-
 ```sh
-pytest
+pytest                  # needs pytest; numba for the threaded tests
+python example.py       # every structure, kernel and manner on the example basin; ends PASS or FAIL
+python benchmark.py     # serial vs threaded on synthetic grids
 ```
 
-181 tests. Every ordering, layering, partition, kernel and manner is
-cross-checked on the example basin, write-conflict counts included. The
-structures are checked against their definitions directly: an ordering is a
-topological sort, a layer is an antichain, a receiver comes after its
-donors, and all of that survives clipping a basin out of a region. Degenerate
-inputs get their own: an empty grid, a lone cell, networks with cycles. So do
-the API's promises: cached arrays are read-only, repeated calls agree bit for
-bit, accumulation keeps the precision it was given.
-
-Those tests and `example.py` run on Python 3.10, 3.11 and 3.12 on every push.
-The badge at the top links to the runs.
-
-## Contact
-
-Questions, problems and suggestions are welcome by email at
-<lulu_jiang@pku.edu.cn>, or as a
-[GitHub issue](https://github.com/hellolulujiang/flowtopo/issues). Email is the
-surer way to reach us.
+Every ordering, layering, partition, kernel and manner is cross-checked on the
+example basin, write-conflict counts included. The structures are checked
+against their definitions: an ordering is a topological sort, a layer is an
+antichain, and in an upstream-to-downstream sequence a receiver comes after
+its donors; all of that survives clipping a basin out of a region. The tests
+and `example.py` run on Python 3.10, 3.11 and 3.12 on every push; the badge
+at the top links to the runs.
 
 ## Citing
 
 The companion manuscript is *MERIT-FlowTopo v1.0: a reusable computational
 foundation for hyperresolution hydrology on the global 90 m drainage network*
-(Jiang et al., in preparation). A citation file will be added once it appears;
-until then, cite the manuscript.
+(Jiang et al., in preparation); a citation file will be added once it
+appears. Until then cite this repository with the commit you used, and for a
+downloaded product cite its version DOI above.
+
+## Acknowledgements
+
+**MERIT Hydro** (Yamazaki et al., 2019;
+[10.1029/2019WR024873](https://doi.org/10.1029/2019WR024873)) provides the
+flow-direction field everything here traverses.
+
+The flat downstream-pointer representation, the D8 decoding conventions, the
+donor-count array, the chain-tracing rank and the breadth-first sequence
+builder follow [pyflwdir](https://github.com/Deltares/pyflwdir) (D. Eilander,
+Deltares; MIT licence;
+[10.5281/zenodo.4287337](https://doi.org/10.5281/zenodo.4287337)). No pyflwdir
+source is included; the code was written against those conventions, and
+`FlowTopo.from_d8` takes the same array `pyflwdir.from_array(d8, ftype="d8")`
+takes. The borrowed and the original parts are set out in
+[`docs/methods.md`](docs/methods.md).
+
+**Claude** (Anthropic) assisted with the Python port, the tests, the
+documentation and the packaging; the authors reviewed the work, and the
+commit history records where. The methods and the results are the authors'
+own, described in the companion manuscript.
+
+## Contact
+
+<lulu_jiang@pku.edu.cn>, or a
+[GitHub issue](https://github.com/hellolulujiang/flowtopo/issues). Email is the
+surer way to reach us.
 
 ## Licence
 

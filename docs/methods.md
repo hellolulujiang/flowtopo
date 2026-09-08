@@ -288,3 +288,29 @@ pin it to cases with a known answer, including the associativity boundary —
 eight lines per set fit, the ninth thrashes.
 
 *Complexity:* O(A · W) time for A accesses and W ways, O(capacity) space.
+
+## Provenance
+
+The representation this package works on comes from
+[pyflwdir](https://github.com/Deltares/pyflwdir) (D. Eilander, Deltares and the
+Institute for Environmental Studies, Vrije Universiteit Amsterdam; MIT licence;
+[10.5281/zenodo.4287337](https://doi.org/10.5281/zenodo.4287337)). What FlowTopo
+takes from it:
+
+* the flat downstream-pointer array: for every cell, the linear index of the
+  cell it drains into, with a pit pointing at itself. Every structure and every
+  kernel here is derived from that one array;
+* the D8 decoding conventions: codes as powers of two clockwise from east, 0 and
+  255 terminal, 247 nodata, and a cell draining off the grid or into nodata
+  treated as a pit;
+* the donor-count array and its sentinel convention;
+* the chain-tracing rank and the breadth-first sequence builder, in the variants
+  set out above.
+
+No pyflwdir source is included. The code here was written against those
+conventions rather than copied from them, and `FlowTopo.from_d8` takes the same
+array `pyflwdir.from_array(d8, ftype="d8")` takes, so the two read the same
+rasters.
+
+The three layerings, the conflict-free downstream rule, the propagation
+manners, the locality metrics and the benchmark drivers are this project's own.
