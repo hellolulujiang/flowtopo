@@ -100,10 +100,13 @@ and links to its full-size MP4 (all nine also play on the
 
 *Two spatial partitions, one subregion per processor. Both cut along the drainage hierarchy, so no value crosses a boundary while a kernel runs.*
 
+<p align="center"><a href="docs/media/partition_schematic.png"><img src="docs/media/partition_schematic.png" width="720"></a></p>
+
+<p align="center"><i>Two basins onto two subregions: (a) whole basins, unbalanced; (b) the dominant basin cut along its mainstem, a tributary subtree moved; (c) balanced.</i></p>
+
 <table>
-<tr><th align="center">basin-level<br><code>level="basin"</code></th><th align="center">subbasin-level<br><code>level="subbasin"</code></th></tr>
-<tr><td colspan="2" align="center"><a href="docs/media/partition_schematic.png"><img src="docs/media/partition_schematic.png" width="560"></a></td></tr>
-<tr><td valign="top" align="center">whole basins dealt to subregions; one dominant basin cannot be balanced</td><td valign="top" align="center">the dominant basin split along its mainstem; tributary subtrees move to the lighter subregion, the mainstem runs in a separate stage</td></tr>
+<tr><th align="center" width="50%">basin-level<br><code>level="basin"</code></th><th align="center" width="50%">subbasin-level<br><code>level="subbasin"</code></th></tr>
+<tr><td align="center">whole basins go to subregions; a dominant basin cannot be balanced</td><td align="center">the dominant basin is cut along its mainstem; its tributary subtrees balance the load, and the mainstem runs in a separate stage</td></tr>
 </table>
 
 ### At a confluence: how does a value reach the receiver?
