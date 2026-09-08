@@ -204,6 +204,12 @@ all versions; this version [10.5281/zenodo.20344113](https://doi.org/10.5281/zen
 is the companion dataset that divides the network into 96 hydrologically
 independent regions, the 65 continental ones being those above.
 
+**MERIT-FlowTopo code** ([10.5281/zenodo.22227621](https://doi.org/10.5281/zenodo.22227621),
+all versions [10.5281/zenodo.22227620](https://doi.org/10.5281/zenodo.22227620))
+is the record the paper cites for code: the C implementation that produced
+the two records above, the scripts and data behind every figure, and an
+archived copy of this package at v1.0.
+
 <details>
 <summary>The structures and the kernel products over the 65 regions</summary>
 
@@ -276,8 +282,10 @@ at the top links to the runs.
 The companion manuscript is *MERIT-FlowTopo v1.0: a reusable computational
 foundation for hyperresolution hydrology on the global 90 m drainage network*
 (Jiang et al., in preparation); a citation file will be added once it
-appears. Until then cite this repository with the commit you used, and for a
-downloaded product cite its version DOI above.
+appears. Until then cite the code record
+[10.5281/zenodo.22227621](https://doi.org/10.5281/zenodo.22227621), or this
+repository with the commit you used; for a downloaded product cite its version
+DOI above.
 
 ## Acknowledgements
 
