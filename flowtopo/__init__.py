@@ -58,7 +58,7 @@ from .locality import parallel_locality, serial_locality
 from .partition import MAINSTEM, partition
 from .raster import GridHeader, read_geotiff, write_geotiff
 
-__version__ = "0.1.0"
+__version__ = "1.0.0"
 
 __all__ = [
     "FlowTopo",

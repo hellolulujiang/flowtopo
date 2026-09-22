@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.0.0 (2026-09-22)
+
+The same code as 0.1.0, renumbered: the public version of this package now follows the product and the paper
+(MERIT-FlowTopo v1.0) and the Zenodo code record 10.5281/zenodo.22227621 (version 1.0.0). From here on, packages
+that are not yet public stay at 0.x locally and take 1.0.0 at their first release.
+
+
 ## 0.1.0
 
 First release.
