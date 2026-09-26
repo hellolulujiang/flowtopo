@@ -15,9 +15,15 @@ then reads the saved order instead of working it out again.
 
 This repository is the Python reference implementation with one example
 basin. The structures for the 90 m MERIT Hydro network are on Zenodo
-([Global products](#global-products)). The companion paper (Jiang et al.) is
-in preparation. A ten-minute narrated video shows the structures and the three
-ways of moving a value to its receiver: <https://youtu.be/tE5K2wM3TTY>.
+([Global products](#global-products)). The companion paper (Jiang et al.) has
+been submitted to Geoscientific Model Development. A ten-minute narrated
+video shows the structures and the three ways of moving a value to its
+receiver: <https://youtu.be/tE5K2wM3TTY>.
+
+Documentation, the global MERIT Hydro products and the other FullHydro tools:
+<https://fullhydro.org/tools/flowtopo/>
+
+Author: Lulu Jiang (<https://lulujiang.me>)
 
 ## Install
 
