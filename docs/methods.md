@@ -15,7 +15,8 @@ Notation:
 ## Rank
 
 `rank[i]` is the number of downstream hops from cell `i` to its pit.
-`rank[pit] = 0`, `rank[headwater]` is the largest value in its basin.
+`rank[pit] = 0`; the headwater farthest from the pit in hops holds the largest value in its basin, and another
+headwater can hold less (on `idxs_ds=[1,2,2,2]` the ranks are `[2,1,0,1]`).
 
 ### `core.rank_to_pit`
 
@@ -37,8 +38,40 @@ before starting the next. A cell's receiver therefore sits only a few positions
 back in the sequence, which is why this ordering has the lowest simulated cache
 miss rate of the three.
 
+Which donor of a confluence is taken first is a choice, and there are two:
+
+* by cell index, the default here;
+* by upstream drainage area, largest first (`seq_dfs_from_pit(idxs_ds, upa)`,
+  or `topo.ordering("dfs", upa=upa)`), which puts the main stem straight after
+  the outlet and gives it consecutive positions. **This is the order of the
+  released MERIT-FlowTopo `seq_dfs` layer**, which the C builds with
+  `dfs_traversal_order_sorted`; a sequence taken from the released raster and
+  one taken from the default here are different sequences, even though both are
+  topological orders of the same network.
+
+Every kernel gives the same answer under either, since both are topological
+orders: as returned (`d2u`) a receiver comes before its donors, which the
+distance to the outlet takes; reversed (`u2d`) a donor comes before its
+receiver, which the upstream area, the upstream flow length and the Strahler
+order take — up to the order the floating-point sums
+at a confluence are added in, which for drainage area in `float32` shows at
+about 4e-6 of the value on the example basin. In `float64` the two orders gave
+the same value for every cell of that basin, which is a measurement and not a
+guarantee: addition is not associative in `float64` either.
+
 *Origin:* Braun and Willett (2013), Geomorphology 180–181:170–179.
 *Complexity:* O(N) time, O(N + E) space.
+
+A cell in a cycle has no place in any of these orders: it is left out of the sequence and marked
+`-1` in the layerings, so a sequence shorter than the valid-cell count is how a cycle shows. The C
+refuses the whole layering there (its conflict-free form returns an error); this package
+leaves the refusal to the caller, who tests `(layers < 0) & mask`. The value such a cell ends with
+means nothing, and depends on the traversal: `dfs` and `bfs` start at the pits and never reach the
+cells around a cycle, so it keeps what it started from, while `topo` starts at the sources and the
+push manners of the as-soon-as-possible and conflict-free layerings, which schedule a cell that flows
+into the cycle, write into it as that cell's receiver; their pull manner and the as-late-as-possible
+layering, which schedules neither, leave it as it started. A grid with a cycle has to be refused, not
+read.
 
 ### `core.seq_bfs_from_pit` — breadth-first, `d2u`
 

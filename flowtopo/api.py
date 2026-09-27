@@ -53,25 +53,80 @@ class FlowTopo:
     >>> upa = topo.upstream_area(layering="cfds", manner="push")   # doctest: +SKIP
     """
 
-    def __init__(self, idxs_ds, shape, transform=None, latlon=True, mask=None):
-        self.idxs_ds = _frozen(np.ascontiguousarray(idxs_ds, dtype=np.int32))
+    def __init__(self, idxs_ds, shape, transform=None, latlon=True, mask=None, crs=None,
+                 earth="sphere"):
         self.shape = tuple(int(v) for v in shape)
         self.nrow, self.ncol = self.shape
-        if self.idxs_ds.size != self.nrow * self.ncol:
+        size = self.nrow * self.ncol
+        given = np.ascontiguousarray(idxs_ds)
+        if given.size != size:
             raise ValueError("idxs_ds does not match shape")
+        if not np.issubdtype(given.dtype, np.integer):
+            # a float array would be truncated by the cast, and 2.9 is not a receiver
+            whole = np.equal(np.mod(given, 1.0), 0.0) if given.size else np.array([], dtype=bool)
+            if not np.all(whole):
+                raise ValueError("idxs_ds holds a value that is not a whole number")
+        # the cast to int32 wraps silently: 2**32 would come back as cell 0, a receiver that exists
+        # and is wrong.  The values are checked as they came in
+        if size > 2147483647:
+            raise ValueError(f"the grid holds {size} cells, more than the int32 the indices are kept in")
+        # compared in a type that cannot wrap: an unsigned 2**64 - 1 cast to int64 would read as -1,
+        # which is a legal "no receiver".  The test is on the kind and the width, not on one dtype
+        # object, so that a big-endian unsigned array is caught too
+        if given.size and given.dtype.kind == "u" and given.dtype.itemsize >= 8:
+            if int(given.max()) >= size:
+                raise ValueError("a downstream index is outside the grid: they run from -1 (no receiver) "
+                                 f"to {size - 1}")
+        as_int64 = given.astype(np.int64, copy=False)
+        if as_int64.size and (as_int64.min() < -1 or as_int64.max() >= size):
+            raise ValueError("a downstream index is outside the grid: they run from -1 (no receiver) "
+                             f"to {size - 1}")
+        self.idxs_ds = _frozen(np.ascontiguousarray(as_int64, dtype=np.int32))
         self.transform = tuple(transform) if transform is not None else None
+        # a rotated grid is refused here too, not only when read from a file: the lengths and areas take
+        # the pixel sides from terms 1 and 5 alone
+        if self.transform is not None and (self.transform[2] != 0 or self.transform[4] != 0):
+            raise ValueError("a rotated grid (terms 2 and 4 of the transform not 0) is not supported")
+        # six finite terms and pixel sides that are not 0; a width of 0 gave every area and
+        # every distance as 0 without a word
+        if self.transform is not None:
+            if len(self.transform) != 6 or not all(np.isfinite(float(term)) for term in self.transform):
+                raise ValueError("the transform must be six finite numbers (x0, pixel width, 0, y0, 0, pixel height)")
+            if self.transform[1] == 0 or self.transform[5] == 0:
+                raise ValueError("the pixel width and height of the transform (terms 1 and 5) must not be 0")
         self.latlon = bool(latlon)
-        self.mask = _frozen(
-            np.ascontiguousarray(mask, dtype=bool)
-            if mask is not None
-            else self.idxs_ds >= 0
-        )
+        # the CRS the grid came with, so that a result written back carries the grid's own and not the
+        # EPSG:4326 the writer used to assume
+        self.crs = str(crs) if crs else None
+        # which earth the cell areas are on: the sphere of the released products, or the WGS84
+        # ellipsoid the C code computes on by default (smaller at the equator, larger
+        # past about 35 degrees)
+        if earth not in geodist.EARTH_MODELS:
+            raise ValueError(f"unknown earth model {earth!r}; use one of {geodist.EARTH_MODELS}")
+        self.earth = earth
+        if mask is not None:
+            # the network is cut to the mask here, once: a cell outside it leaves the network (-1), and a
+            # cell inside it whose receiver is outside becomes a pit.  The orderings, the basins, the partition and
+            # the layerings were built on the whole idxs_ds while the kernels honoured the mask, so a cell outside it
+            # was numbered, labelled a basin and put on a mainstem
+            mask_array = np.ascontiguousarray(mask, dtype=bool)
+            if mask_array.size != size:
+                raise ValueError("mask does not match shape")
+            cut = np.array(self.idxs_ds, dtype=np.int32)
+            cut[~mask_array] = -1
+            receiver = cut.astype(np.int64)
+            inside = cut >= 0
+            leaves = inside & ~mask_array[np.where(inside, receiver, 0)]
+            cut[leaves] = np.flatnonzero(leaves).astype(np.int32)
+            self.idxs_ds = _frozen(cut)
+        self.mask = _frozen(self.idxs_ds >= 0)
         self._cache = {}
 
     # -- constructors ------------------------------------------------------
 
     @classmethod
-    def from_d8(cls, d8, shape=None, transform=None, latlon=True, nodata=None):
+    def from_d8(cls, d8, shape=None, transform=None, latlon=True, nodata=None, crs=None,
+                earth="sphere"):
         """Build from a D8 flow-direction raster.
 
         Takes the same array ``pyflwdir.from_array(d8, ftype="d8")`` takes:
@@ -88,6 +143,12 @@ class FlowTopo:
         elif shape is None:
             raise ValueError("a flat d8 array needs shape=(nrow, ncol)")
         nrow, ncol = shape
+        # the size is refused before the downstream pointers are built: the builder allocates an
+        # int32 array of the whole grid first, so a grid past int32 would fail there or wrap round
+        #
+        if int(nrow) * int(ncol) > 2147483647:
+            raise ValueError(f"the grid holds {int(nrow) * int(ncol)} cells, more than the int32 the "
+                             f"indices are kept in")
 
         strange = core.unknown_codes(d8, nodata=nodata)
         if strange:
@@ -107,17 +168,19 @@ class FlowTopo:
 
         idxs_ds = core.d8_to_downstream(d8, nrow, ncol, nodata=nodata)
         obj = cls(idxs_ds, shape, transform=transform, latlon=latlon,
-                  mask=idxs_ds >= 0)
-        obj._cache["d8"] = np.ascontiguousarray(d8, dtype=np.uint8)
+                  mask=idxs_ds >= 0, crs=crs, earth=earth)
+        obj._cache["d8"] = core._as_d8_codes(d8, nodata)   # the nodata found on the grid's own type
         return obj
 
     @classmethod
-    def from_raster(cls, path):
-        """Build from a single-band D8 GeoTIFF."""
+    def from_raster(cls, path, earth="sphere"):
+        """Build from a single-band D8 GeoTIFF.
+
+        Whether the grid is read as degrees or as metres comes from its CRS, not from an assumption."""
         data, header = read_geotiff(path)
         return cls.from_d8(data, shape=header.shape,
-                           transform=header.transform, latlon=True,
-                           nodata=header.nodata)
+                           transform=header.transform, latlon=header.latlon,
+                           nodata=header.nodata, crs=header.crs, earth=earth)
 
     # -- geometry ----------------------------------------------------------
 
@@ -138,12 +201,13 @@ class FlowTopo:
     @property
     def cell_area(self):
         """Per-cell area in square kilometres, zero outside the network."""
-        if "area" not in self._cache:
+        key = f"area_{self.earth}"          # the model is part of the key, so a model set after a first
+        if key not in self._cache:          # call cannot hand back the areas of the other one
             area = geodist.pixel_area_km2(self.nrow, self.ncol,
-                                          self._require_transform())
+                                          self._require_transform(), self.latlon, self.earth)
             area[~self.mask] = 0.0
-            self._cache["area"] = _frozen(area)
-        return self._cache["area"]
+            self._cache[key] = _frozen(area)
+        return self._cache[key]
 
     @property
     def basins(self):
@@ -167,17 +231,33 @@ class FlowTopo:
 
     # -- orderings ---------------------------------------------------------
 
-    def ordering(self, name="dfs", direction="d2u"):
+    def ordering(self, name="dfs", direction="d2u", upa=None):
         """One of the three serial orderings.
 
         ``name`` is ``"dfs"``, ``"bfs"`` or ``"topo"``.  ``direction`` is
         ``"d2u"`` (position 0 is a pit) or ``"u2d"`` (position 0 is a
         headwater); the two are reverses of each other.
+
+        ``upa`` (depth-first only) takes the donors of a cell largest first by
+        upstream area, which is the order of the released MERIT-FlowTopo
+        ``seq_dfs`` layer; without it the donors are taken in index order.
+        Both are topological orders and every kernel gives the same answer
+        under either.
         """
         if name not in ORDERINGS:
             raise ValueError(f"unknown ordering {name!r}; use one of {ORDERINGS}")
         if direction not in ("d2u", "u2d"):
             raise ValueError("direction must be 'd2u' or 'u2d'")
+        if upa is not None and name != "dfs":
+            raise ValueError("upa orders the donors of the depth-first traversal; it means nothing "
+                             f"for {name!r}")
+
+        if upa is not None:
+            # not cached: the order depends on the areas it was given, and a cache with one key would
+            # hand back the order of another set of areas.  It is one pass, and the
+            # caller who wants it twice keeps it
+            seq = _frozen(core.seq_dfs_from_pit(self.idxs_ds, upa))
+            return seq if direction == "d2u" else seq[::-1]
 
         key = f"seq_{name}"
         if key not in self._cache:
@@ -225,13 +305,21 @@ class FlowTopo:
         ``direction="d2u"`` flips the layering so receivers come before their
         donors, which the downstream-propagation kernel needs.
         """
+        # the direction checked as ordering() checks it; any other word was taken as u2d
+        if direction not in ("d2u", "u2d"):
+            raise ValueError("direction must be 'd2u' or 'u2d'")
         key = f"dd_{name}_{direction}"
         if key not in self._cache:
             layers, nlayers = self.layering(name)
             if direction == "d2u":
                 layers = reverse_layers(layers, self.mask)
                 nlayers = None
-            self._cache[key] = Decomposition.from_layers(layers, nlayers)
+            decomposition = Decomposition.from_layers(layers, nlayers)
+            # the cells and the offsets are handed out as they are, so they are read-only like every
+            # other cached array: writing to them changed every later call with no sign
+            decomposition.cells = _frozen(decomposition.cells)
+            decomposition.offsets = _frozen(decomposition.offsets)
+            self._cache[key] = decomposition
         return self._cache[key]
 
     # -- upstream adjacency ------------------------------------------------
@@ -241,7 +329,8 @@ class FlowTopo:
         key = "us" if mask is None else "us_masked"
         if key not in self._cache or mask is not None:
             msk = None if mask is None else np.asarray(mask, dtype=np.uint8)
-            self._cache[key] = core.upstream_table(self.idxs_ds, msk)
+            table, n_up = core.upstream_table(self.idxs_ds, msk)
+            self._cache[key] = (_frozen(table), _frozen(n_up))
         return self._cache[key]
 
     # -- kernels -----------------------------------------------------------
@@ -307,16 +396,20 @@ class FlowTopo:
         if manner is None:
             manner = "serial" if seq is not None else (
                 "push" if layering == "cfds" else "pull")
+        # the cells the order is computed on are the object's mask,
+        # and of those the channel cells when a channel mask is given.  The
+        # object's mask was left out when no channel mask was given, so a cell
+        # outside it still counted as a tributary.
+        cells = np.asarray(self.mask, dtype=bool)
+        if channel_mask is not None:
+            cells = cells & np.asarray(channel_mask, dtype=bool)
         us_table = n_up = None
         if manner == "pull":
             us_table, n_up = core.upstream_table(
-                self.idxs_ds,
-                None if channel_mask is None
-                else np.asarray(channel_mask, dtype=np.uint8),
-            )
+                self.idxs_ds, cells.astype(np.uint8))
         return kernels.strahler_order(
             self.idxs_ds, seq_u2d=seq, decomp=decomp, us_table=us_table,
-            n_up=n_up, manner=manner, mask=channel_mask,
+            n_up=n_up, manner=manner, mask=cells,
         )
 
     def channel_mask(self, upa, threshold_km2=10.0):
@@ -357,6 +450,7 @@ class FlowTopo:
         return GridHeader(
             ncol=self.ncol, nrow=self.nrow, dtype=dtype, nodata=nodata,
             transform=self.transform or (0.0, 1.0, 0.0, 0.0, 0.0, -1.0),
+            crs=self.crs if self.crs is not None else "", latlon=self.latlon,
         )
 
     def to_2d(self, flat):

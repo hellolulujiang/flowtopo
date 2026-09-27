@@ -68,8 +68,10 @@ columns at 3 arc-seconds, 93,432 valid cells, 731 km², cut from
 and kept under its CC BY-NC 4.0 terms ([`DATA_NOTICE.md`](DATA_NOTICE.md)).
 The GeoJSON files are the basin boundary and the outlet.
 
-Any D8 GeoTIFF in the same convention works, as long as it is in longitude
-and latitude: the area and distance kernels treat the grid as degrees. Codes
+Any D8 GeoTIFF in the same convention works, north-up, in longitude and
+latitude or in a projection whose unit is the metre: the CRS decides whether
+the area and distance kernels read the grid as degrees or as metres, and a
+rotated grid or a projection in another unit is refused. Codes
 are powers of two clockwise from east; 0 and 255 are terminals; 247 is always
 nodata, and a nodata value declared in the file is excluded as well.
 
@@ -137,8 +139,10 @@ Three things to know:
   asks for one explicitly.
 * The layer count is set by the longest flow path, and the conflict-free rule
   may add layers (on the example basin it adds none: 949 for all three). In
-  the two headwater-anchored schemes layer 0 holds every headwater; in
-  as-late-as-possible it holds only the farthest ones.
+  as-soon-as-possible layer 0 holds every headwater; the conflict-free rule
+  holds back a headwater whose receiver another cell of the layer already
+  drains into, so its layer 0 can hold fewer; in as-late-as-possible it holds
+  only the farthest ones.
 * `topo.partition(n_parts, level)` returns a label per cell and the load per
   subregion. Subbasin-level marks the mainstem `flowtopo.MAINSTEM`; it runs as
   its own stage, after the tributary subregions for kernels that accumulate
@@ -303,6 +307,20 @@ written independently; on the example basin they agree to floating-point
 rounding in the accumulated area. That check has been made on the example
 basin only.
 
+Two things to know when a result here is compared with a downloaded layer:
+
+* the released `seq_dfs` takes the donors of a confluence by upstream drainage
+  area, largest first, and this package takes them by cell index unless it is
+  given the area: `topo.ordering("dfs", upa=upa)` reproduces the released
+  order. Both are topological orders, and every kernel gives the same answer
+  under either;
+* the released cell areas are on the sphere of radius 6 371 000 m, which is
+  what `geodist.cell_area_m2` computes by default; the C code defaults to the
+  WGS84 ellipsoid, so a rerun of the C code gives areas that
+  are 0.45 per cent smaller at the equator and 0.56 per cent larger at 60
+  degrees unless it is told to use the sphere. `FlowTopo(..., earth="wgs84")`
+  computes the ellipsoid's areas here.
+
 ## Documentation
 
 * [`docs/user-guide.md`](docs/user-guide.md) — choosing an ordering, a layering
@@ -336,8 +354,8 @@ at the top links to the runs.
 
 The companion manuscript is *MERIT-FlowTopo v1.0: a reusable computational
 foundation for hyperresolution hydrology on the global 90 m drainage network*
-(Jiang et al., in preparation); a citation file will be added once it
-appears. Until then cite the code record
+(Jiang et al., submitted to Geoscientific Model Development); a citation
+file will be added once it appears. Until then cite the code record
 [10.5281/zenodo.22227621](https://doi.org/10.5281/zenodo.22227621), or this
 repository with the commit you used; for a downloaded product cite its version
 DOI above.

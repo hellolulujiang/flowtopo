@@ -49,14 +49,19 @@ def _lpt(weights, n_parts):
     return part, load
 
 
-def _mainstem(idxs_ds, pit, upstream, us_table, n_up):
-    """Cells from a pit up to the head, taking the larger tributary each time."""
+def _mainstem(idxs_ds, pit, upstream, us_table, n_up, mask):
+    """Cells from a pit up to the head, taking the larger tributary each time.
+
+    Only donors inside ``mask`` are followed: the donor table is the
+    whole grid's, and a donor outside the mask was followed onto the stem
+   ."""
     stem = [int(pit)]
     seen = {int(pit)}
     cell = int(pit)
     while True:
         donors = us_table[cell][: max(int(n_up[cell]), 0)]
         donors = donors[donors >= 0]
+        donors = donors[mask[donors]]
         if donors.size == 0:
             break
         cell = int(donors[np.argmax(upstream[donors])])
@@ -137,8 +142,11 @@ def partition(topo, n_parts=4, level="subbasin"):
     sizes = counts[labels]
     if labels.size == 0:
         # Every cell is label 0, so nothing reaches a pit. They all go to one
-        # subregion to keep the cover complete, and its load stays zero:
-        # there is no work here for any kernel to do.
+        # subregion to keep the cover complete, and its load stays zero: the
+        # load counts only cells that reach a pit.  (Not that no kernel runs
+        # here: ASAP and CFDS still layer a tributary that flows into a cycle,
+        # and upstream area adds it in, so a caller refuses networks with
+        # cycles first.)
         part[mask] = 0
         return part, np.zeros(n_parts, dtype=np.float64)
 
@@ -151,9 +159,10 @@ def partition(topo, n_parts=4, level="subbasin"):
         stranded = mask & (part == -1)
         if stranded.any():
             # Cells that reach no pit. They need a subregion so that every
-            # cell has one, but no kernel will process them: a sequence skips
-            # them and a layering leaves them unnumbered. Keeping them out of
-            # load is what makes load the amount of work in a subregion.
+            # cell has one; they are kept out of load, which counts the cells
+            # that reach a pit.  A cycle itself is left unnumbered, but ASAP
+            # and CFDS still layer a tributary that flows into it, so a network
+            # with cycles is to be refused before it is partitioned.
             part[stranded] = int(np.argmin(load))
         return part, load
 
@@ -167,7 +176,11 @@ def partition(topo, n_parts=4, level="subbasin"):
         return by_whole_basin()
 
     seq_d2u = seq_dfs_from_pit(idxs_ds)
-    ones = np.ones(idxs_ds.size, dtype=np.float32)
+    # Cells are counted in float64.  In float32 the count stops being
+    # exact at 2**24 = 16,777,216 cells, so in a larger basin the pit and the
+    # cells just above it could tie, argmax could pick one of those cells, and
+    # the mainstem would start from the wrong place.
+    ones = np.ones(idxs_ds.size, dtype=np.float64)
     upstream = upstream_area(idxs_ds, ones, seq_u2d=seq_d2u[::-1],
                              manner="serial", mask=mask)
     us_table, n_up = topo.upstream()
@@ -176,8 +189,14 @@ def partition(topo, n_parts=4, level="subbasin"):
     on_stem = np.zeros(idxs_ds.size, dtype=np.uint8)
     for basin in big:
         members = np.nonzero(basins == basin)[0]
-        pit = members[np.argmax(upstream[members])]
-        on_stem[_mainstem(idxs_ds, pit, upstream, us_table, n_up)] = 1
+        # the pit is the cell that drains into itself, not the cell
+        # with the largest count
+        pits = members[idxs_ds[members] == members]
+        if pits.size == 1:
+            pit = int(pits[0])
+        else:
+            pit = int(members[np.argmax(upstream[members])])
+        on_stem[_mainstem(idxs_ds, pit, upstream, us_table, n_up, mask)] = 1
 
     part[on_stem == 1] = MAINSTEM
 
@@ -213,7 +232,9 @@ def partition(topo, n_parts=4, level="subbasin"):
     part[keep] = lookup[basins[keep]]
     # Cells that reach no pit carry label 0, which has no entry in the
     # assignment; give them the lightest subregion rather than leaving them
-    # out. They do not count towards load, since no kernel processes them.
+    # out. They do not count towards load, which counts the cells that reach
+    # a pit; ASAP and CFDS still layer a tributary that flows into a cycle,
+    # so a network with cycles is to be refused before it is partitioned.
     stranded = mask & (part == -1)
     if stranded.any():
         part[stranded] = int(np.argmin(load))

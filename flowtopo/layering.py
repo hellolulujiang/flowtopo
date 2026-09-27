@@ -84,9 +84,18 @@ def reverse_layers(layers, msk):
     Used by the downstream-propagation kernel, which has to visit a receiver
     before its donors instead of after.
     """
-    layers = np.ascontiguousarray(layers, dtype=np.int64)
-    msk = np.ascontiguousarray(msk, dtype=bool)
-    lyr_max = int(layers[msk].max()) if np.any(msk) else -1
+    layers = np.ascontiguousarray(layers, dtype=np.int64).reshape(-1)
+    msk = np.ascontiguousarray(msk, dtype=bool).reshape(-1)
+    if msk.size != layers.size:            # one mask value per cell
+        raise ValueError(f"msk holds {msk.size} values and layers {layers.size}; one each per cell")
+    # a cell with no layer (outside the network, or in a cycle, or draining into one) keeps -1: it has
+    # no place in the flipped layering either.  Until 2026-09-22 every cell of the mask was flipped,
+    # so a cycle's -1 became the largest layer and the cells of a two-cell cycle landed in the same
+    # layer, one writing into the other
+    scheduled = msk & (layers >= 0)
+    lyr_max = int(layers[scheduled].max()) if np.any(scheduled) else -1
+    if lyr_max > 2147483647:        # the flipped layers are int32 (2**32 wrapped to 0)
+        raise ValueError("a layer number is past the int32 the flipped layering is kept in")
     out = np.full(layers.size, -1, dtype=np.int32)
-    out[msk] = (lyr_max - layers[msk]).astype(np.int32)
+    out[scheduled] = (lyr_max - layers[scheduled]).astype(np.int32)
     return out

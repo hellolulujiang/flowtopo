@@ -22,6 +22,7 @@ rather than falling back to a serial loop while still being called parallel.
 
 import numpy as np
 
+from .core import _checked_downstream
 from ._compat import HAS_NUMBA, njit, prange
 
 UPA_NODATA = np.float32(-9999.0)
@@ -78,7 +79,9 @@ def _lup_push(idxs_ds, cells, offsets, height, mv):
             if idx_ds < 0 or idx_ds == idx:
                 continue
             hds = height[idx_ds]
-            if hds == mv or hu > hds:
+            if hds == mv:
+                continue                      # a receiver outside the mask keeps its nodata
+            if hu > hds:
                 height[idx_ds] = hu
 
 
@@ -92,6 +95,8 @@ def _ldn_layered(idxs_ds, cells, offsets, plen, dist, mv):
             idx_ds = idxs_ds[idx]
             if idx_ds < 0 or idx_ds == idx:
                 continue
+            if dist[idx] == mv:
+                continue                      # a cell outside the mask keeps its nodata
             dds = dist[idx_ds]
             seg = plen[idx]
             if dds == mv or seg == mv:
@@ -114,8 +119,13 @@ def upstream_area(topo, layering="cfds", manner="push", cell_area=None):
     _require_numba()
     decomp = topo.decomposition(layering, "u2d")
     area = topo.cell_area if cell_area is None else cell_area
-    upa = np.ascontiguousarray(area, dtype=np.float32).copy()
-    upa[~topo.mask] = UPA_NODATA
+    # the accumulator keeps the type it was given, as the serial kernel does: forcing Float32 here
+    # made a chain that counts cells stop being exact above 2**24, so the threaded answer differed
+    # from the serial one at the outlet of a large basin
+    area = np.asarray(area)
+    dtype = np.float32 if area.dtype == np.float32 else np.float64
+    upa = np.ascontiguousarray(area, dtype=dtype).copy()
+    upa[~topo.mask] = dtype(UPA_NODATA)
     if manner == "push":
         _upa_push(topo.idxs_ds, decomp.cells, decomp.offsets, upa, UPA_NODATA)
     elif manner == "pull":
@@ -235,7 +245,7 @@ def seq_bfs_from_pit(idxs_ds):
     still one serial pass and is now the limiting step.
     """
     _require_numba()
-    idxs_ds = np.ascontiguousarray(idxs_ds, dtype=np.int32)
+    idxs_ds = _checked_downstream(idxs_ds)
     offsets, donors = _donor_csr(idxs_ds)
     return _bfs_parallel_frontier(idxs_ds, offsets, donors)
 

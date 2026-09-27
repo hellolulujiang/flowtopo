@@ -15,6 +15,7 @@ installed.
 
 import numpy as np
 
+from .core import _checked_cells, _checked_downstream, _checked_sequence
 from ._compat import njit
 from .layering import Decomposition
 
@@ -97,16 +98,34 @@ def _simulate_lru(seq, idxs_ds, elem_bytes, capacity_lines, n_ways, array_offset
     return misses / total if total > 0 else 1.0
 
 
+def _check_elem_bytes(elem_bytes):
+    """An element of no size has no cache line; the C code refuses it too."""
+    if int(elem_bytes) <= 0:
+        raise ValueError("elem_bytes must be positive, got %r" % (elem_bytes,))
+    return int(elem_bytes)
+
+
 def miss_rates(seq, idxs_ds, elem_bytes=4, levels=("L1", "L2", "L3")):
     """Simulated cache miss rate per level for one visitation order."""
-    seq = np.ascontiguousarray(seq, dtype=np.int32)
-    idxs_ds = np.ascontiguousarray(idxs_ds, dtype=np.int32)
+    elem_bytes = _check_elem_bytes(elem_bytes)
+    idxs_ds = _checked_downstream(idxs_ds)
+    seq = _checked_sequence("seq", seq, idxs_ds.size)
     out = {}
     for name in levels:
         capacity, ways = CACHE_LEVELS[name]
         out[name] = _simulate_lru(seq, idxs_ds, elem_bytes, capacity, ways,
                                   _ARRAY_OFFSET)
     return out
+
+
+def _cache_line_of(indices, elem_bytes):
+    """The cache line each element sits on: its first byte over the line size, which is the C code's
+    rule.  Dividing the index by "elements per line" is the same thing only when the element
+    size divides 64: with three-byte elements, 20 and 21 start in line 0 and 1 by that formula and in
+    line 0 and 0 by this one."""
+    if elem_bytes <= 0:
+        raise ValueError("elem_bytes must be positive, got %r" % (elem_bytes,))
+    return (np.asarray(indices, dtype=np.int64) * int(elem_bytes)) // CACHE_LINE_BYTES
 
 
 def _reuse_intervals(cell_lines):
@@ -146,9 +165,9 @@ def serial_locality(seq_d2u, idxs_ds, ncol, elem_bytes=4,
         ``stride_*``, ``row_jump_frac``, ``reuse_interval_*``, ``ds_stride_*`` and
         one ``miss_rate_<level>`` per requested cache level.
     """
-    seq = np.ascontiguousarray(seq_d2u, dtype=np.int64)
-    idxs_ds = np.ascontiguousarray(idxs_ds, dtype=np.int32)
-    cl_elems = CACHE_LINE_BYTES // elem_bytes
+    elem_bytes = _check_elem_bytes(elem_bytes)
+    idxs_ds = _checked_downstream(idxs_ds)
+    seq = _checked_sequence("seq_d2u", seq_d2u, idxs_ds.size).astype(np.int64)
 
     stride = np.abs(np.diff(seq))
     rows = seq // ncol
@@ -158,7 +177,7 @@ def serial_locality(seq_d2u, idxs_ds, ncol, elem_bytes=4,
     cells = np.nonzero(valid)[0]
     ds_stride = np.abs(cells - idxs_ds[cells].astype(np.int64))
 
-    reuse = _reuse_intervals(seq // cl_elems)
+    reuse = _reuse_intervals(_cache_line_of(seq, elem_bytes))
 
     out = {
         "stride_mean": float(stride.mean()) if stride.size else 0.0,
@@ -187,10 +206,10 @@ def parallel_locality(layers, idxs_ds, msk, ncol, elem_bytes=4,
     (layer 0 first, ascending cell index inside a layer) and feeds it through
     the same simulator as :func:`serial_locality`, so the two are comparable.
     """
-    layers = np.ascontiguousarray(layers, dtype=np.int64)
-    idxs_ds = np.ascontiguousarray(idxs_ds, dtype=np.int32)
-    msk = np.asarray(msk, dtype=bool)
-    cl_elems = CACHE_LINE_BYTES // elem_bytes
+    elem_bytes = _check_elem_bytes(elem_bytes)
+    idxs_ds = _checked_downstream(idxs_ds)
+    layers = _checked_cells("layers", layers, idxs_ds.size, np.int64)     # one value per cell
+    msk = _checked_cells("msk", msk, idxs_ds.size, bool)
 
     masked = np.where(msk, layers, -1)
     decomp = Decomposition.from_layers(masked)
@@ -205,11 +224,15 @@ def parallel_locality(layers, idxs_ds, msk, ncol, elem_bytes=4,
             continue
         cells = members.astype(np.int64)
         spans[layer_index] = int(cells.max() - cells.min())
-        footprints[layer_index] = int(np.unique(cells // cl_elems).size)
+        footprints[layer_index] = int(np.unique(_cache_line_of(cells, elem_bytes)).size)
         if cells.size > 1:
             gaps = np.diff(cells)
             gap_medians[layer_index] = float(np.median(gaps))
-            gap_hits[layer_index] = float((gaps <= cl_elems).mean())
+            # two consecutive cells share a cache line when they have the same line number, not when
+            # their indices are within one line's worth of each other: with 16 elements to a line,
+            # 15 and 16 are one apart and on different lines (the C code's criterion)
+            lines = _cache_line_of(cells, elem_bytes)
+            gap_hits[layer_index] = float((np.diff(lines) == 0).mean())
         else:
             gap_hits[layer_index] = 1.0
 

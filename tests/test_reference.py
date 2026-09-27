@@ -49,12 +49,36 @@ def _visit_position(seq, size):
 
 
 @pytest.mark.parametrize("name", ["dfs", "bfs", "topo"])
-def test_ordering_matches_c(topo, name):
-    # the reference stores the u2d visit position: 0 at a headwater
+def test_ordering_matches_the_reference(topo, name):
+    # the reference stores the u2d visit position: 0 at a headwater.  Its depth-first order is the one
+    # that takes the donors of a confluence by cell index, which is this package's default; the
+    # released MERIT-FlowTopo seq_dfs layer takes them by upstream area instead (see the next test)
     seq = topo.ordering(name, "u2d")
     mine = _visit_position(seq, topo.idxs_ds.size)
     theirs = _ref(f"seq_{name}")
     assert np.array_equal(mine[topo.mask], theirs[topo.mask])
+
+
+def test_dfs_by_upstream_area_follows_the_released_rule(topo, upa):
+    """The rule of the released seq_dfs: the donors of a confluence taken largest first by area.
+
+    This checks the rule, not the released raster: reproducing that one pixel for pixel needs the
+    same Float32 upstream area the release was built from, which this repository does not ship.
+    """
+    seq = topo.ordering("dfs", "d2u", upa=upa)
+    assert np.array_equal(np.sort(seq), np.sort(topo.ordering("dfs", "d2u")))     # the same cells
+    position = np.full(topo.idxs_ds.size, -1, dtype=np.int64)
+    position[seq] = np.arange(seq.size)
+    # a topological order: every cell comes after the cell it drains into
+    inside = topo.idxs_ds[seq]
+    moving = (inside >= 0) & (inside != seq)
+    assert (position[inside[moving]] < position[seq[moving]]).all()
+    # and at a confluence the donor with the most area is the one taken first
+    us_table, n_up = topo.upstream()
+    for cell in np.nonzero(n_up > 1)[0][:200]:
+        donors = us_table[cell][us_table[cell] >= 0]
+        taken_first = donors[np.argmin(position[donors])]
+        assert upa[taken_first] == upa[donors].max()
 
 
 @pytest.mark.parametrize("name", ["asap", "cfds", "alap"])

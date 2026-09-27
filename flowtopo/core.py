@@ -41,6 +41,81 @@ D8_CODES = frozenset({0, 1, 2, 4, 8, 16, 32, 64, 128, 255})
 """Every code this convention defines, the two terminals included."""
 
 
+
+def _checked_downstream(idxs_ds):
+    """The downstream indices as int32, checked on the type they came in.
+
+    Every public function of this module and of kernels takes its indices through this: the cast to int32
+    wraps round (2**32 became cell 0, a receiver that exists) and a float was truncated.
+    A value must be a whole number in -1 .. size - 1, and the grid no larger than int32 counts.
+    """
+    given = np.ascontiguousarray(idxs_ds)
+    size = given.size
+    if size > 2147483647:
+        raise ValueError("the grid holds more cells than the int32 the indices are kept in")
+    if given.dtype == np.int32:
+        values = given
+    elif np.issubdtype(given.dtype, np.integer):
+        values = given
+    else:
+        if size and not np.all(np.isfinite(given) & (np.mod(given, 1.0) == 0.0)):
+            raise ValueError("a downstream index is not a whole number")
+        values = given
+    if size and (values.min() < -1 or values.max() >= size):
+        raise ValueError("a downstream index is outside the grid: they run from -1 (no receiver) to %d" % (size - 1))
+    return np.ascontiguousarray(values, dtype=np.int32)
+
+
+def _checked_cells(name, values, size, dtype):
+    """One value per cell of the network, flat.  The compiled kernels do not check bounds, so a
+    shorter array would be read and written past its end; every module takes its arrays through
+    this one check"""
+    array = np.ascontiguousarray(values, dtype=dtype).reshape(-1)
+    if array.size != size:
+        raise ValueError(f"{name} holds {array.size} values; the network has {size} cells, one value each")
+    return array
+
+
+def _checked_sequence(name, values, size):
+    """An ordering: cell indices 0 .. size - 1, checked on the type they came in before they are made int32
+    (an int64 2**32 would wrap to cell 0)"""
+    given = np.asarray(values)
+    if given.ndim != 1 or (given.size and given.dtype.kind not in "iu"):
+        raise ValueError(f"{name} must be a flat array of cell indices")
+    if given.size and (int(given.min()) < 0 or int(given.max()) >= size):
+        raise ValueError(f"{name} holds a cell index outside 0 .. {size - 1}")
+    return np.ascontiguousarray(given, dtype=np.int32)
+
+
+def _as_d8_codes(dir_flat, nodata=None):
+    """The grid as uint8 codes, its nodata as D8_NODATA.
+
+    The nodata is found on the grid's own type before the cast: a UInt16 grid
+    whose nodata is 65535 turned it into 255, a valid terminal, and a value
+    outside 0..255 wrapped round into some code.  A NaN
+    nodata is found with isnan.  Every cell of the nodata becomes D8_NODATA,
+    on a uint8 grid too, so nothing downstream has to exclude the nodata again
+    (the exclusion of int(nodata) took a code away when the nodata was 1.5).
+    A value that is neither nodata nor a whole number in 0..255 is refused.
+    """
+    raw = np.asarray(dir_flat).ravel()
+    is_nodata = np.zeros(raw.shape, dtype=bool)
+    if nodata is not None:
+        if np.isnan(float(nodata)):
+            is_nodata = np.isnan(raw) if raw.dtype.kind == "f" else is_nodata
+        else:
+            is_nodata = raw == nodata
+    values = raw[~is_nodata]
+    if values.size:
+        if raw.dtype.kind == "f" and not np.all(np.isfinite(values) & (np.mod(values, 1.0) == 0.0)):
+            raise ValueError("the flow directions hold values that are not whole numbers")
+        if values.min() < 0 or values.max() > 255:
+            raise ValueError("the flow directions hold values outside 0..255 that are not the nodata")
+    codes = np.where(is_nodata, 0, raw).astype(np.uint8)
+    codes[is_nodata] = D8_NODATA
+    return np.ascontiguousarray(codes)
+
+
 def unknown_codes(dir_flat, nodata=None):
     """Codes in the grid that this convention does not define.
 
@@ -51,11 +126,9 @@ def unknown_codes(dir_flat, nodata=None):
     direction at all, so the cell becomes a pit and the network quietly falls
     apart into fragments.
     """
-    dir_flat = np.asarray(dir_flat, dtype=np.uint8).ravel()
+    dir_flat = _as_d8_codes(dir_flat, nodata)       # nodata found on the grid's own type
     codes, counts = np.unique(dir_flat, return_counts=True)
-    skip = set(D8_CODES) | {int(D8_NODATA)}
-    if nodata is not None and 0 <= int(nodata) <= 255:
-        skip.add(int(nodata))
+    skip = set(D8_CODES) | {int(D8_NODATA)}      # the grid's nodata is D8_NODATA already (_as_d8_codes)
     return {int(c): int(n) for c, n in zip(codes, counts) if int(c) not in skip}
 
 
@@ -106,15 +179,13 @@ def d8_to_downstream(dir_flat, nrow, ncol, nodata=None):
         that drains off the grid, into nodata, or nowhere points at itself and
         is treated as a pit.
     """
-    dir_flat = np.ascontiguousarray(dir_flat, dtype=np.uint8)
+    dir_flat = _as_d8_codes(dir_flat, nodata)       # nodata found on the grid's own type
     size = nrow * ncol
     if dir_flat.size != size:
         raise ValueError(f"dir_flat has {dir_flat.size} cells, expected {size}")
 
     idxs_ds = np.full(size, MV, dtype=np.int32)
-    valid = dir_flat != D8_NODATA
-    if nodata is not None and 0 <= int(nodata) <= 255 and int(nodata) != int(D8_NODATA):
-        valid &= dir_flat != np.uint8(int(nodata))
+    valid = dir_flat != D8_NODATA          # the grid's nodata is D8_NODATA already (_as_d8_codes)
     idx = np.nonzero(valid)[0]
 
     codes = dir_flat[idx]
@@ -177,10 +248,10 @@ def upstream_count(idxs_ds, msk=None):
     max_donors : int
         Largest donor count on the grid (at most 8 for D8).
     """
-    idxs_ds = np.ascontiguousarray(idxs_ds, dtype=np.int32)
+    idxs_ds = _checked_downstream(idxs_ds)
     use_msk = msk is not None
     msk_arr = (
-        np.ascontiguousarray(msk, dtype=np.uint8)
+        _checked_cells("msk", msk, idxs_ds.size, np.uint8)       # one value per cell
         if use_msk
         else np.zeros(1, dtype=np.uint8)
     )
@@ -215,12 +286,12 @@ def upstream_table(idxs_ds, msk=None):
     of each donor writing into the receiver, so concurrent writes cannot
     collide.  The cost is building and storing the table.
     """
-    idxs_ds = np.ascontiguousarray(idxs_ds, dtype=np.int32)
+    idxs_ds = _checked_downstream(idxs_ds)
     n_up, max_donors = upstream_count(idxs_ds, msk)
     max_donors = max(int(max_donors), 1)
     use_msk = msk is not None
     msk_arr = (
-        np.ascontiguousarray(msk, dtype=np.uint8)
+        _checked_cells("msk", msk, idxs_ds.size, np.uint8)       # one value per cell
         if use_msk
         else np.zeros(1, dtype=np.uint8)
     )
@@ -282,11 +353,11 @@ def _rank(idxs_ds):
 def rank_to_pit(idxs_ds):
     """Downstream hops from each cell to its pit.
 
-    ``rank[pit] == 0`` and ``rank[headwater]`` is the largest value in its
-    basin.  ``-9999`` outside the network, ``-1`` inside a cycle.  Used here
+    ``rank[pit] == 0``, and the headwater farthest from the pit in hops holds
+    the largest value of its basin; another headwater can hold less.  ``-9999`` outside the network, ``-1`` inside a cycle.  Used here
     only as the intermediate of the as-late-as-possible layering.
     """
-    return _rank(np.ascontiguousarray(idxs_ds, dtype=np.int32))
+    return _rank(_checked_downstream(idxs_ds))
 
 
 # ---------------------------------------------------------------------------
@@ -438,14 +509,105 @@ def _seq_topo(idxs_ds, n_up_in):
     return seq, n_out
 
 
-def seq_dfs_from_pit(idxs_ds):
+@njit(cache=True)
+def _seq_dfs_sorted(idxs_ds, upa):
+    """Depth-first from the pits with the donors of a cell taken by upstream area, largest first."""
+    size = idxs_ds.size
+    ndon = np.zeros(size, dtype=np.int32)
+    n_valid = 0
+    for i in range(size):
+        ds = idxs_ds[i]
+        if ds == MV or ds < 0 or ds >= size:
+            continue
+        n_valid += 1
+        if ds == i:
+            continue
+        ndon[ds] += 1
+
+    delta = np.zeros(size + 1, dtype=np.int64)
+    for i in range(size):
+        delta[i + 1] = delta[i] + ndon[i]
+
+    donors = np.empty(delta[size], dtype=np.int32)
+    fill = np.zeros(size, dtype=np.int32)
+    for i in range(size):
+        ds = idxs_ds[i]
+        if ds == MV or ds < 0 or ds >= size or ds == i:
+            continue
+        donors[delta[ds] + fill[ds]] = i
+        fill[ds] += 1
+
+    # insertion sort by descending area, the C's; the donors were filled in ascending index order and
+    # the sort is stable, so donors of equal area keep the smaller index first
+    for i in range(size):
+        count = fill[i]
+        if count <= 1:
+            continue
+        base = delta[i]
+        for a in range(1, count):
+            key = donors[base + a]
+            key_upa = upa[key]
+            b = a - 1
+            while b >= 0 and upa[donors[base + b]] < key_upa:
+                donors[base + b + 1] = donors[base + b]
+                b -= 1
+            donors[base + b + 1] = key
+
+    seq = np.full(size, MV, dtype=np.int32)
+    stack = np.empty(n_valid if n_valid > 0 else 1, dtype=np.int32)
+    top = 0
+    n_out = 0
+    for i in range(size):
+        ds = idxs_ds[i]
+        if ds != MV and 0 <= ds < size and ds == i:
+            stack[top] = i
+            top += 1
+    while top > 0:
+        top -= 1
+        c = stack[top]
+        seq[n_out] = c
+        n_out += 1
+        for k in range(delta[c + 1] - 1, delta[c] - 1, -1):
+            stack[top] = donors[k]
+            top += 1
+    return seq, n_out
+
+
+def seq_dfs_from_pit(idxs_ds, upa=None):
     """Depth-first order, downstream to upstream (position 0 is a pit).
 
     A tributary subtree is finished before the next one starts, so a cell's
     receiver sits only a few positions back.  This is the most cache-friendly
     of the three orderings.
+
+    ``upa`` takes the donors of a cell largest first by upstream area instead
+    of by index, which puts the main stem straight after the outlet and gives
+    it consecutive positions.  **That is the order of the released
+    MERIT-FlowTopo ``seq_dfs`` layer**, which the C driver builds with
+    ``dfs_traversal_order_sorted``; without ``upa`` the donors are taken in
+    index order, which is a valid topological order too and is what every
+    kernel here has always used.  Any kernel gives the same answer under
+    either, since both are topological orders: as returned (d2u) a receiver
+    comes before its donors, which the distance to the outlet takes; reversed
+    (u2d) a donor comes before its receiver, which the upstream area, the
+    upstream flow length and the Strahler order take.
     """
-    seq, n = _seq_dfs(np.ascontiguousarray(idxs_ds, dtype=np.int32))
+    idxs_ds = _checked_downstream(idxs_ds)
+    if upa is None:
+        seq, n = _seq_dfs(idxs_ds)
+    else:
+        upa = np.ascontiguousarray(upa, dtype=np.float32)
+        if upa.size != idxs_ds.size:
+            raise ValueError("upa does not match the grid")
+        # every cell of the network needs a finite, positive area, as
+        # the C code asks: a NaN stops the insertion sort
+        # half way and an infinity (a no-data of 1.79e308 cast to float32)
+        # goes first, and the order is no longer the larger area first
+        #
+        network_upa = upa[idxs_ds >= 0]
+        if network_upa.size and not np.all(np.isfinite(network_upa) & (network_upa > 0)):
+            raise ValueError("upa holds a value that is not a finite, positive area on a cell of the network")
+        seq, n = _seq_dfs_sorted(idxs_ds, upa)
     return seq[:n]
 
 
@@ -455,13 +617,13 @@ def seq_bfs_from_pit(idxs_ds):
     Cells are grouped by downstream hop count: first the pits, then everything
     one hop above a pit, and so on out to the headwaters.
     """
-    seq, n = _seq_bfs(np.ascontiguousarray(idxs_ds, dtype=np.int32))
+    seq, n = _seq_bfs(_checked_downstream(idxs_ds))
     return seq[:n]
 
 
 def seq_topo_from_source(idxs_ds):
     """Topological order, upstream to downstream (position 0 is a headwater)."""
-    idxs_ds = np.ascontiguousarray(idxs_ds, dtype=np.int32)
+    idxs_ds = _checked_downstream(idxs_ds)
     n_up, _ = upstream_count(idxs_ds)
     seq, n = _seq_topo(idxs_ds, n_up)
     return seq[:n]
@@ -495,10 +657,12 @@ def basin_labels(idxs_ds, seq_d2u=None):
     a pit opens a new basin and every other cell copies its receiver's label.
     Required by the as-late-as-possible layering.
     """
-    idxs_ds = np.ascontiguousarray(idxs_ds, dtype=np.int32)
+    idxs_ds = _checked_downstream(idxs_ds)
     if seq_d2u is None:
         seq_d2u = seq_dfs_from_pit(idxs_ds)
-    return _basin_labels(idxs_ds, np.ascontiguousarray(seq_d2u, dtype=np.int32))
+    # the ordering checked on the type it came in, as the downstream indices (an int64
+    # 2**32 wrapped to cell 0)
+    return _basin_labels(idxs_ds, _checked_sequence("seq_d2u", seq_d2u, idxs_ds.size))
 
 
 # ---------------------------------------------------------------------------
@@ -629,12 +793,14 @@ def layering_asap(idxs_ds):
     -------
     layers : ndarray of int32
         Layer index per cell.  ``-1`` means the cell has no layer, for one of
-        two reasons: it is outside the network, or it sits in a cycle or
-        drains into one, which no layering can schedule.  ``(layers < 0) &
-        mask`` counts the second kind and is how you detect a cycle.
+        two reasons: it is outside the network, or it sits in a cycle, which
+        no layering can schedule (a cell that drains into a cycle
+        without being in one is scheduled).
+        ``(layers < 0) & mask`` counts the second kind and is how you detect a
+        cycle.
     nlayers : int
     """
-    idxs_ds = np.ascontiguousarray(idxs_ds, dtype=np.int32)
+    idxs_ds = _checked_downstream(idxs_ds)
     n_up, _ = upstream_count(idxs_ds)
     return _layering_asap(idxs_ds, n_up)
 
@@ -652,22 +818,22 @@ def layering_cfds(idxs_ds):
     confluence rule is a comparison, not an addition, so no atomic can fix it.
     Costs at most a few layers over the plain form.
 
-    Cells caught in a cycle cannot be scheduled by their dependencies. Unlike
-    the as-soon-as-possible form, which leaves them at ``-1``, this one places
-    them in a layer once nothing else can advance -- still one receiver per
-    cell per layer, so the guarantee holds, though a kernel has no meaningful
-    value to compute for them.
+    Cells caught in a cycle cannot be scheduled by their dependencies and
+    keep ``-1``, as in the as-soon-as-possible form
+    (``layering_cfds([1, 0])`` gives ``[-1, -1]``).  A cell
+    that drains into a cycle without being in one is still placed, as the
+    as-soon-as-possible form places it.
 
     Returns
     -------
     layers : ndarray of int32
         Layer index per cell.  ``-1`` means the cell has no layer, for one of
-        two reasons: it is outside the network, or it sits in a cycle or
-        drains into one, which no layering can schedule.  ``(layers < 0) &
-        mask`` counts the second kind and is how you detect a cycle.
+        two reasons: it is outside the network, or it sits in a cycle, which
+        no layering can schedule.  ``(layers < 0) & mask`` counts the second
+        kind and is how you detect a cycle.
     nlayers : int
     """
-    idxs_ds = np.ascontiguousarray(idxs_ds, dtype=np.int32)
+    idxs_ds = _checked_downstream(idxs_ds)
     n_up, _ = upstream_count(idxs_ds)
     ncells = int(np.count_nonzero(idxs_ds != MV))
     return _layering_cfds(idxs_ds, n_up, ncells)
@@ -686,14 +852,23 @@ def layering_alap(idxs_ds, bsn=None):
     layers : ndarray of int32
         Layer index per cell.  ``-1`` means the cell has no layer, for one of
         two reasons: it is outside the network, or it sits in a cycle or
-        drains into one, which no layering can schedule.  ``(layers < 0) &
-        mask`` counts the second kind and is how you detect a cycle.
+        drains into one, which this layering does not schedule (the
+        as-soon-as-possible and conflict-free layerings do schedule a cell
+        that drains into a cycle, not one in it).  ``(layers < 0) & mask``
+        counts the second kind and is how you detect a cycle.
     nlayers : int
     """
-    idxs_ds = np.ascontiguousarray(idxs_ds, dtype=np.int32)
+    idxs_ds = _checked_downstream(idxs_ds)
     if bsn is None:
         bsn, _ = basin_labels(idxs_ds)
-    bsn = np.ascontiguousarray(bsn, dtype=np.uint32)
+    # the basin labels checked on the type they came in, one per cell, whole and within uint32, before they
+    # are made uint32: an int64 2**32 wrapped to 0 and took the whole network out
+    given_bsn = np.asarray(bsn).reshape(-1)
+    if given_bsn.size != idxs_ds.size or (given_bsn.size and given_bsn.dtype.kind not in "iu"):
+        raise ValueError("bsn must hold one whole basin label per cell")
+    if given_bsn.size and (int(given_bsn.min()) < 0 or int(given_bsn.max()) > 4294967295):
+        raise ValueError("a basin label is outside 0 .. 2**32 - 1")
+    bsn = np.ascontiguousarray(given_bsn, dtype=np.uint32)
 
     rnk = rank_to_pit(idxs_ds)
     max_bsn = int(bsn.max()) if bsn.size else 0

@@ -41,6 +41,7 @@ addition -- so the layering is the only way to run it under push.
 
 import numpy as np
 
+from .core import _checked_cells, _checked_downstream, _checked_sequence
 from ._compat import njit
 
 UPA_NODATA = np.float32(-9999.0)
@@ -54,6 +55,22 @@ def _check_manner(manner, allowed):
         raise ValueError(
             f"manner {manner!r} is not available here; use one of {allowed}"
         )
+
+
+def _checked_nodata(nodata, dtype):
+    """a NaN nodata cannot be told apart by ==, and the cells it marks were summed in; it must be
+    negative, since areas and distances are not, and a nodata of 0 took the zero a distance starts from for a cell
+    outside the mask and skipped the whole network"""
+    value = float(nodata)
+    if np.isnan(value):
+        raise ValueError("nodata must be a number, not NaN")
+    # checked as the type the kernel holds it in: -1e-50 is negative but 0 in float32, and passed
+    #.  The value returned is that one
+    in_type = dtype(value)
+    if not (np.isfinite(in_type) and in_type < 0):
+        raise ValueError(f"nodata must be negative, and stay so in {np.dtype(dtype).name} (areas and distances are "
+                         f"not); got {value:g}")
+    return in_type
 
 
 # ---------------------------------------------------------------------------
@@ -105,23 +122,24 @@ def upstream_area(idxs_ds, cell_area, *, seq_u2d=None, decomp=None,
         float32 when ``cell_area`` is float32, float64 otherwise.  Integer
         input accumulates in float64 so that counting cells stays exact.
     """
+    _checked_nodata(nodata, np.float64)
     _check_manner(manner, MANNERS)
-    idxs_ds = np.ascontiguousarray(idxs_ds, dtype=np.int32)
+    idxs_ds = _checked_downstream(idxs_ds)
     # float32 only when that is what came in. Anything else accumulates in
     # float64: an integer cell_area, the natural way to count upstream cells,
     # stops being exact above 2**24 in float32, which a 90 m network passes
     # long before it runs out of cells.
     dtype = np.float32 if np.asarray(cell_area).dtype == np.float32 else np.float64
-    upa = np.ascontiguousarray(cell_area, dtype=dtype).copy()
-    nodata = dtype(nodata)
+    upa = _checked_cells("cell_area", cell_area, idxs_ds.size, dtype).copy()
+    nodata = _checked_nodata(nodata, dtype)
     zero = dtype(0.0)
     if mask is not None:
-        upa[~np.asarray(mask, dtype=bool)] = nodata
+        upa[~_checked_cells("mask", mask, idxs_ds.size, bool)] = nodata
 
     if manner == "serial":
         if seq_u2d is None:
             raise ValueError("manner='serial' needs seq_u2d")
-        _upa_serial(idxs_ds, np.ascontiguousarray(seq_u2d, dtype=np.int32),
+        _upa_serial(idxs_ds, _checked_sequence("seq_u2d", seq_u2d, idxs_ds.size),
                     upa, nodata)
         return upa
 
@@ -175,6 +193,11 @@ def _ldn_serial(idxs_ds, seq_d2u, plen, dist, mv):
         idx_ds = idxs_ds[idx]
         if idx_ds < 0 or idx_ds == idx:
             continue
+        # a cell outside the mask carries the nodata and keeps it: the value it would be given comes
+        # from a receiver that is inside, and writing it would put a distance on a cell the caller
+        # asked to leave alone
+        if dist[idx] == mv:
+            continue
         dds = dist[idx_ds]
         seg = plen[idx]
         if dds == mv or seg == mv:
@@ -190,18 +213,19 @@ def distance_to_outlet(idxs_ds, plen, *, seq_d2u=None, decomp=None,
     form is safe under any layering.  ``decomp`` must be a *downstream to
     upstream* layering, since a receiver has to be visited before its donors.
     """
+    nodata = _checked_nodata(nodata, np.float32)
     _check_manner(manner, ("serial", "push", "atomic_push", "pull"))
-    idxs_ds = np.ascontiguousarray(idxs_ds, dtype=np.int32)
-    plen = np.ascontiguousarray(plen, dtype=np.float32)
+    idxs_ds = _checked_downstream(idxs_ds)
+    plen = _checked_cells("plen", plen, idxs_ds.size, np.float32)
 
     dist = np.zeros(idxs_ds.size, dtype=np.float32)
     if mask is not None:
-        dist[~np.asarray(mask, dtype=bool)] = nodata
+        dist[~_checked_cells("mask", mask, idxs_ds.size, bool)] = nodata
 
     if manner == "serial":
         if seq_d2u is None:
             raise ValueError("manner='serial' needs seq_d2u")
-        _ldn_serial(idxs_ds, np.ascontiguousarray(seq_d2u, dtype=np.int32),
+        _ldn_serial(idxs_ds, _checked_sequence("seq_d2u", seq_d2u, idxs_ds.size),
                     plen, dist, np.float32(nodata))
         return dist
 
@@ -210,7 +234,7 @@ def distance_to_outlet(idxs_ds, plen, *, seq_d2u=None, decomp=None,
 
     for idx in decomp:
         ds = idxs_ds[idx]
-        keep = (ds >= 0) & (ds != idx)
+        keep = (ds >= 0) & (ds != idx) & (dist[idx] != nodata)     # the cell itself is inside the mask
         i, d = idx[keep], ds[keep]
         if i.size == 0:
             continue
@@ -236,7 +260,11 @@ def _lup_serial(idxs_ds, seq_u2d, height, mv):
         if ds < 0 or ds == idx:
             continue
         hds = height[ds]
-        if hds == mv or hu > hds:
+        # a receiver outside the mask carries the nodata and keeps it; until 2026-09-22 the nodata was
+        # read as "nothing here yet" and the first donor overwrote it
+        if hds == mv:
+            continue
+        if hu > hds:
             height[ds] = hu
 
 
@@ -258,19 +286,20 @@ def longest_upstream_path(idxs_ds, ldn, *, seq_u2d=None, decomp=None,
     cell's own distance to outlet.  ``ldn`` is the output of
     :func:`distance_to_outlet`.
     """
+    nodata = _checked_nodata(nodata, np.float32)
     _check_manner(manner, MANNERS)
-    idxs_ds = np.ascontiguousarray(idxs_ds, dtype=np.int32)
-    ldn = np.ascontiguousarray(ldn, dtype=np.float32)
+    idxs_ds = _checked_downstream(idxs_ds)
+    ldn = _checked_cells("ldn", ldn, idxs_ds.size, np.float32)
     mv = np.float32(nodata)
 
     height = ldn.copy()
     if mask is not None:
-        height[~np.asarray(mask, dtype=bool)] = mv
+        height[~_checked_cells("mask", mask, idxs_ds.size, bool)] = mv
 
     if manner == "serial":
         if seq_u2d is None:
             raise ValueError("manner='serial' needs seq_u2d")
-        _lup_serial(idxs_ds, np.ascontiguousarray(seq_u2d, dtype=np.int32),
+        _lup_serial(idxs_ds, _checked_sequence("seq_u2d", seq_u2d, idxs_ds.size),
                     height, mv)
         return _lup_finalise(height, ldn, mv)
 
@@ -305,10 +334,11 @@ def longest_upstream_path(idxs_ds, ldn, *, seq_u2d=None, decomp=None,
             continue
         if manner == "push":
             hds = height[d]
-            take = (hds == mv) | (hu > hds)
+            take = (hds != mv) & (hu > hds)          # a receiver outside the mask keeps its nodata
             height[d[take]] = hu[take]
         else:
-            np.maximum.at(height, d, hu)
+            inside = height[d] != mv
+            np.maximum.at(height, d[inside], hu[inside])
     return _lup_finalise(height, ldn, mv)
 
 
@@ -318,15 +348,21 @@ def longest_upstream_path(idxs_ds, ldn, *, seq_u2d=None, decomp=None,
 
 
 @njit(cache=True)
-def _strahler_serial(idxs_ds, seq_u2d, strord, strmax):
+def _strahler_serial(idxs_ds, seq_u2d, strord, strmax, msk, use_msk):
     for t in range(seq_u2d.size):
         idx0 = seq_u2d[t]
         if idx0 < 0:
+            continue
+        if use_msk and not msk[idx0]:
             continue
         if strord[idx0] == 0:
             strord[idx0] = 1
         idx_ds = idxs_ds[idx0]
         if idx_ds < 0 or idx_ds == idx0:
+            continue
+        # the receiver is tested as well as the cell: an order written into a cell outside the channel
+        # network is an order on a hillslope pixel (the C tests both)
+        if use_msk and not msk[idx_ds]:
             continue
         sto = strord[idx0]
         sto_ds = strord[idx_ds]
@@ -355,19 +391,21 @@ def strahler_order(idxs_ds, *, seq_u2d=None, decomp=None, us_table=None,
     keep order 0.
     """
     _check_manner(manner, ("serial", "pull", "push"))
-    idxs_ds = np.ascontiguousarray(idxs_ds, dtype=np.int32)
+    idxs_ds = _checked_downstream(idxs_ds)
     size = idxs_ds.size
     strord = np.zeros(size, dtype=np.uint8)
     strmax = np.zeros(size, dtype=np.uint8)
-    msk = None if mask is None else np.asarray(mask, dtype=bool)
+    msk = None if mask is None else _checked_cells("mask", mask, size, bool)
 
     if manner == "serial":
         if seq_u2d is None:
             raise ValueError("manner='serial' needs seq_u2d")
-        seq = np.ascontiguousarray(seq_u2d, dtype=np.int32)
-        if msk is not None:
+        seq = _checked_sequence("seq_u2d", seq_u2d, size)
+        use_msk = msk is not None
+        mask_array = np.ascontiguousarray(msk if use_msk else np.zeros(1, dtype=bool))
+        if use_msk:
             seq = np.ascontiguousarray(seq[msk[seq]], dtype=np.int32)
-        _strahler_serial(idxs_ds, seq, strord, strmax)
+        _strahler_serial(idxs_ds, seq, strord, strmax, mask_array, use_msk)
         return strord
 
     if decomp is None:
