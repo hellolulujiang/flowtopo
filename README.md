@@ -313,7 +313,7 @@ Two things to know when a result here is compared with a downloaded layer:
   area, largest first, and this package takes them by cell index unless it is
   given the area: `topo.ordering("dfs", upa=upa)` reproduces the released
   order. Both are topological orders, and every kernel gives the same answer
-  under either;
+  under either, up to the order the floating-point sums are added in;
 * the released cell areas are on the sphere of radius 6 371 000 m, which is
   what `geodist.cell_area_m2` computes by default; the C code defaults to the
   WGS84 ellipsoid, so a rerun of the C code gives areas that
@@ -329,9 +329,6 @@ Two things to know when a result here is compared with a downloaded layer:
   complexity, and what is borrowed from pyflwdir.
 * [`examples/quickstart.ipynb`](examples/quickstart.ipynb) — a notebook on the
   bundled data, stored with its output.
-* [`docs/review-checklist.md`](docs/review-checklist.md) — what has been
-  checked and how, the bugs those checks found, and what has not been checked
-  yet.
 
 ## Verification
 

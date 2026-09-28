@@ -53,8 +53,7 @@ def _mainstem(idxs_ds, pit, upstream, us_table, n_up, mask):
     """Cells from a pit up to the head, taking the larger tributary each time.
 
     Only donors inside ``mask`` are followed: the donor table is the
-    whole grid's, and a donor outside the mask was followed onto the stem
-   ."""
+    whole grid's, and a donor outside the mask was followed onto the stem."""
     stem = [int(pit)]
     seen = {int(pit)}
     cell = int(pit)

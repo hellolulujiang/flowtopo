@@ -104,7 +104,9 @@ Needs numba.
 
 Each returns one layer index per cell, `-1` outside the network. The members of
 a layer are mutually independent, so a layer can be processed in any order or
-all at once. Layer 0 holds the headwaters and the index grows toward the pit.
+all at once. The index grows toward the pit. Layer 0 holds every headwater in the as-soon-as-possible
+form; the conflict-free form can hold a headwater back, and the as-late-as-possible form holds only the
+farthest ones.
 
 ### `core.layering_asap` — as soon as possible
 
@@ -250,8 +252,10 @@ layering and by both partitions.
 
 ### `geodist`
 
-Metres per degree from the WGS-84 series expansion, and the spherical area of
-a lat-lon pixel. Checked against pyproj: metres per degree agree to 1e-5, the
+Metres per degree from the WGS-84 series expansion, and the area of a lat-lon
+pixel: on the sphere of radius 6 371 000 m by default (the earth the released
+products are on), or on the WGS84 ellipsoid with `model="wgs84"`
+(`FlowTopo(..., earth="wgs84")`), the exact zone of the ellipsoid. Checked against pyproj: metres per degree agree to 1e-5, the
 series' own accuracy. Cell area matches the closed-form spherical value on
 square and non-square grids alike, and summing a whole-globe grid reproduces
 4 pi R squared.
@@ -273,7 +277,8 @@ it approaches a percent.
 ### `raster`
 
 `read_geotiff` and `write_geotiff`, through rasterio. `GridHeader` carries the
-shape, dtype, nodata and geotransform.
+shape, dtype, nodata, geotransform and CRS, and whether the coordinates are degrees
+(`latlon`): a projected grid in metres is read as metres.
 
 ### `layering.Decomposition`, `layering.reverse_layers`
 

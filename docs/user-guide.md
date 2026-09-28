@@ -66,8 +66,8 @@ it start to end and every cell is reached after everything it depends on. One
 loop, one thread.
 
 A **layering** is one layer index per cell. Cells in a layer do not depend on
-each other, so the whole layer can be done at once. Layer 0 is the headwaters
-and the index grows toward the pit. The number of layers cannot be smaller than
+each other, so the whole layer can be done at once. The index grows toward the pit, and
+layer 0 holds headwaters (every one of them in the as-soon-as-possible form). The number of layers cannot be smaller than
 the longest flow path.
 
 Orderings and layerings are two views of the same constraint. Use an ordering

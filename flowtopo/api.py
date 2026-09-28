@@ -145,7 +145,6 @@ class FlowTopo:
         nrow, ncol = shape
         # the size is refused before the downstream pointers are built: the builder allocates an
         # int32 array of the whole grid first, so a grid past int32 would fail there or wrap round
-        #
         if int(nrow) * int(ncol) > 2147483647:
             raise ValueError(f"the grid holds {int(nrow) * int(ncol)} cells, more than the int32 the "
                              f"indices are kept in")

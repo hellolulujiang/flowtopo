@@ -54,8 +54,8 @@ def read_geotiff(path):
     with src:
         data = src.read(1)
         # the cells the file's own mask marks invalid (an internal mask or alpha band, not only the
-        # nodata value) become nodata; read(1) returns their stored values, and a 0 there was taken as a real outlet
-        #.  With no mask but the nodata value this changes nothing
+        # nodata value) become nodata; read(1) returns their stored values, and a 0 there was taken as a real outlet.
+        # With no mask but the nodata value this changes nothing
         fill = src.nodata if src.nodata is not None else 247.0
         valid = src.read_masks(1)
         if not valid.all():

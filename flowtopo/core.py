@@ -7,8 +7,8 @@ cell drains into, or the cell itself at a pit.  From it this module builds
 * three parallel layerings, each a per-cell layer number where the members of
   one layer are mutually independent.
 
-Layer 0 of a layering holds the headwaters, and the layer index grows toward
-the pit.  A cell caught in a cycle is left out of the sequences and marked
+The layer index of a layering grows toward the pit; layer 0 holds headwaters
+(every one of them in the as-soon-as-possible form).  A cell caught in a cycle is left out of the sequences and marked
 ``-1`` in the layerings, so a sequence shorter than the valid-cell count means
 the input has a cycle.
 
@@ -586,8 +586,10 @@ def seq_dfs_from_pit(idxs_ds, upa=None):
     MERIT-FlowTopo ``seq_dfs`` layer**, which the C driver builds with
     ``dfs_traversal_order_sorted``; without ``upa`` the donors are taken in
     index order, which is a valid topological order too and is what every
-    kernel here has always used.  Any kernel gives the same answer under
-    either, since both are topological orders: as returned (d2u) a receiver
+    kernel here has always used.  The areas are taken as float32, as the
+    released layer holds them.  Any kernel gives the same answer under
+    either, up to the order floating-point sums are added in, since both are
+    topological orders: as returned (d2u) a receiver
     comes before its donors, which the distance to the outlet takes; reversed
     (u2d) a donor comes before its receiver, which the upstream area, the
     upstream flow length and the Strahler order take.
@@ -603,7 +605,6 @@ def seq_dfs_from_pit(idxs_ds, upa=None):
         # the C code asks: a NaN stops the insertion sort
         # half way and an infinity (a no-data of 1.79e308 cast to float32)
         # goes first, and the order is no longer the larger area first
-        #
         network_upa = upa[idxs_ds >= 0]
         if network_upa.size and not np.all(np.isfinite(network_upa) & (network_upa > 0)):
             raise ValueError("upa holds a value that is not a finite, positive area on a cell of the network")
