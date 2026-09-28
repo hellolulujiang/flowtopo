@@ -335,3 +335,220 @@ of two donors rather than adding them. The checks treat them that way.
 * `docs/methods.md` — every construction, its origin and its cost.
 * `example.py` — the whole package exercised on one basin.
 * `benchmark.py` — serial against threaded, at several grid sizes.
+
+## More on the structures and the global products
+
+### Your own grid
+
+Any D8 GeoTIFF in the MERIT Hydro convention (that of the example basin) works, north-up, in longitude and
+latitude or in a projection whose unit is the metre: the CRS decides whether
+the area and distance kernels read the grid as degrees or as metres, and a
+rotated grid or a projection in another unit is refused. Codes
+are powers of two clockwise from east; 0 and 255 are terminals; 247 is always
+nodata, and a nodata value declared in the file is excluded as well.
+
+Work one region or basin at a time. Indices are int32, so a raster must stay
+under 2.1 billion cells, nodata included; the 38° × 38° regions of
+MERIT-FullBasin do.
+
+### What the tests check
+
+Every ordering, layering, partition, kernel and manner is cross-checked on the
+example basin, write-conflict counts included. The structures are checked
+against their definitions: an ordering is a topological sort, no cell in a
+layer depends on another cell of the same layer, and in an
+upstream-to-downstream sequence a receiver comes after its donors. All of
+that still holds after clipping a basin out of a region. The tests
+and `example.py` run on Python 3.10, 3.11 and 3.12 on every push; the badge
+at the top of the [README](../README.md) links to the runs.
+
+### Three things to know about the structures
+
+* An ordering is built in one direction and can be read in either. Kernels
+  that gather into the receiver (upstream drainage area, flow length upstream,
+  Strahler stream order) walk upstream to downstream; flow length downstream walks the other
+  way. The kernels pick the direction themselves; `topo.ordering("dfs", "u2d")`
+  asks for one explicitly.
+* The layer count is set by the longest flow path, and the conflict-free rule
+  may add layers (on the example basin it adds none: 949 for all three). In
+  as-soon-as-possible layer 0 holds every headwater; the conflict-free rule
+  holds back a headwater whose receiver another cell of the layer already
+  drains into, so its layer 0 can hold fewer; in as-late-as-possible it holds
+  only the farthest ones.
+* `topo.partition(n_parts, level)` returns a label per cell and the load per
+  subregion. Subbasin-level marks the mainstem `flowtopo.MAINSTEM`; it runs as
+  its own stage, after the tributary subregions for kernels that accumulate
+  downstream and before them for flow length downstream.
+
+Four kernels come with the package: upstream drainage area, flow length
+downstream (`distance_to_outlet`), flow length upstream
+(`longest_upstream_path`) and Strahler stream order. Each runs on every
+supported combination of structure and manner, and the results are checked
+against each other.
+
+<details>
+<summary>Write conflicts and cache locality on the example basin</summary>
+
+A push is only safe if no two cells in a layer write to the same receiver.
+Conflicting writes inside a layer, example basin (93,432 cells):
+
+| layering | conflicting writes |
+| --- | --- |
+| as-soon-as-possible | 12,122 |
+| **conflict-free downstream** | **0** |
+| as-late-as-possible | 39,130 |
+
+The count is a property of the layering and can be checked before running.
+A test run cannot replace that check, because a race does not show up every
+time. Under the conflict-free layering no two cells in a layer share a
+receiver, so the push adds in the same order every time and gives
+bit-identical results at any thread count. Strahler stream order cannot be done with
+one atomic operation, because its confluence rule is a comparison and a
+count, not an addition; within a layer, a push is safe for it only under the
+conflict-free layering (on one thread: the threaded kernels do not include it). When `manner` is not given, the `FlowTopo` methods pick a safe one for the
+layering; `parallel.upstream_area` defaults to push, which is safe only under
+`cfds`.
+
+The three serial orderings differ in memory access. Simulated L1 miss rate on
+the example basin: depth-first 10.5%, breadth-first 21.8%, topological sort
+37.1% (`flowtopo.locality.miss_rates`). The numbers move by a few points with
+how the two arrays sit in memory; the ranking does not.
+
+</details>
+
+### Which structure to use
+
+From the paper's benchmark of the C implementation on the 90 m network
+(22.2 billion cells, 65 regions):
+
+* **One pass on one core** — the depth-first ordering. Up to 5.1 times faster
+  than the slowest ordering, because each cell's receiver stays close in
+  memory (L3 miss rate 6% against 37%). Measure parallel speedup against it;
+  a slower baseline inflates the speedup.
+* **Repeated passes** (calibration, ensembles) — the as-late-as-possible
+  layering, fastest in parallel for all four kernels because each layer fits
+  in cache. Under it, atomic push beat pull for sums and maxima (71.1 s
+  against 85.1 s for flow length upstream). Use pull when the kernel has no
+  atomic form or the result must be reproducible; pull needs the donor table.
+* **Push for a non-linear kernel, or little RAM** — the conflict-free
+  downstream layering with push. No locks, deterministic, only the receiver
+  pointer stored, and the only push that can run Strahler stream order. Pull
+  also runs it under any layering and was faster (4.8 s against
+  9.1 s); push wins when the donor table does not fit in memory.
+* **Across processors** — the subbasin partition, one subregion per
+  processor, with as many threads per subregion as the processor's memory
+  bandwidth can feed. That number depends on the processor: Fig. 15 of the
+  paper shows it for the server tested; measure it on yours.
+
+This package runs numba over numpy on far smaller grids, and the ranking is
+not the same: on 16 million cells, push under `cfds` is the fastest threaded
+form and pull is slower than the serial pass, because building and reading
+the donor table costs more than ten threads save. Run `benchmark.py` on your
+machine before choosing; it times upstream drainage area on synthetic grids
+of the side length you give it.
+
+### Global products
+
+Run with the C implementation over the 90 m MERIT Hydro network, the same
+methods produced two Zenodo records of per-region GeoTIFFs. Both cover the 65
+continental regions of MERIT-FullBasin; the 29 island groups and the two
+regions that straddle the antimeridian are not included.
+
+**MERIT-FlowTopo** ([10.5281/zenodo.20653059](https://doi.org/10.5281/zenodo.20653059))
+holds the structures: for every region the depth-first sequence, the
+conflict-free downstream and as-late-as-possible layerings and the subbasin
+partition; for Region 43 (southern China) all eight, so the alternatives can
+be compared in one region. 978 GB uncompressed, 50 GB compressed.
+
+**MERIT-DrainAttr** ([10.5281/zenodo.20686665](https://doi.org/10.5281/zenodo.20686665))
+holds the kernels run over those structures: flow length downstream, flow
+length upstream and Strahler stream order for every region, and upstream
+drainage area for Region 43 only, since MERIT Hydro already distributes it
+globally. 622 GB uncompressed, 60 GB compressed.
+
+**MERIT-FullBasin** ([10.5281/zenodo.20344113](https://doi.org/10.5281/zenodo.20344113))
+is the companion dataset that divides the network into 96 hydrologically
+independent regions, the 65 continental ones being those above.
+
+**MERIT-FlowTopo code** ([10.5281/zenodo.22227621](https://doi.org/10.5281/zenodo.22227621))
+is the record the paper cites for code: the C implementation that produced
+the two records above, the scripts and data behind every figure, and an
+archived copy of this package (0.1.0, commit c51b93f; renumbered 1.0.0 on
+2026-09-22 with no change to the code).
+
+Four maps over the 65 regions, one per line below. Click a line to open its map.
+
+<details>
+<summary><b>Serial orderings</b>: the sequence index of each ordering, globally and in the example basin</summary>
+
+[![](media/global_orderings.png)](media/global_orderings.png)
+
+*(a) topological sort from the sources, (b) breadth-first from the pit, (c) depth-first from the pit. The topological sort rises smoothly from headwaters to outlets, breadth-first forms bands of equal hop count from the outlet, depth-first breaks the basin into one compact block per tributary. Global maps share one scale from 0 to the total cell count; each basin map is scaled to itself; the red triangle is the outlet. All three are stored upstream to downstream.*
+
+</details>
+
+<details>
+<summary><b>Parallel layerings</b>: the layer index of each layering; only as-late-as-possible fills its layers evenly</summary>
+
+[![](media/global_layerings.png)](media/global_layerings.png)
+
+*(a) as-soon-as-possible, (b) conflict-free downstream, (c) as-late-as-possible. Under (a) and (b) most cells sit in the first few layers and only the main rivers reach high indices, so the global scale is cut at 3,000; (c) spreads the cells over all layers and uses the full range, tens of thousands in the largest basins. The example basin has 949 layers under all three.*
+
+</details>
+
+<details>
+<summary><b>Spatial partitions</b>: every region split four ways, Region 43 before and after the mainstem cut</summary>
+
+[![](media/global_partitions.png)](media/global_partitions.png)
+
+*(a, c) all 65 regions; (b, d) Region 43, subregions 4301 to 4304. Top row basin-level: the dominant basin of Region 43 fills one subregion on its own. Bottom row subbasin-level: the basin is cut along its mainstem (purple) and the four subregions come out balanced. The four colours recur region by region.*
+
+</details>
+
+<details>
+<summary><b>Kernel products</b>: the four MERIT-DrainAttr variables mapped</summary>
+
+[![](media/kernel_products.png)](media/kernel_products.png)
+
+*(a) flow length downstream, km; (b) flow length upstream, km; (c) Strahler stream order on channels draining at least 10 km²; (d) upstream drainage area, km², colour scale cut at 100 km². The red box is the example basin. (d) is released for Region 43 only, since MERIT Hydro distributes it globally.*
+
+</details>
+
+#### Using the released structures
+
+The structures index into the MERIT Hydro flow-direction grid, which is not
+redistributed here: get it from
+<https://global-hydrodynamics.github.io/MERIT_Hydro/> under its own terms.
+Which MERIT Hydro tiles a region needs, and the row and column offset of each,
+is listed at <https://fullhydro.org/fullbasin/> under "Which MERIT Hydro tiles
+do I need?". Region boxes sit on
+whole degrees and one degree is 1,200 cells, so a region is cut from the
+global rasters by integer arithmetic, with no resampling.
+
+You do not need a whole region. Keep any subset of cells: the released
+sequence restricted to them is still a topological sort, and a restricted
+layering still has independent layers, conflict-free rule included, because
+removing cells cannot put a cell before something it depends on, nor make two
+remaining cells depend on each other. A receiver outside the clip becomes an
+outlet when the clip is loaded. Only the kernel values change: upstream drainage
+area on a clip counts the area inside the clip. Clip whole basins when the values
+must match the global ones, or take them from MERIT-DrainAttr.
+
+This package is a port of the C code that produced the release. The two were
+written independently; on the example basin they agree to floating-point
+rounding in the accumulated area. That check has been made on the example
+basin only.
+
+Two things to know when a result here is compared with a downloaded layer:
+
+* the released `seq_dfs` takes the donors of a confluence by upstream drainage
+  area, largest first, and this package takes them by cell index unless it is
+  given the area: `topo.ordering("dfs", upa=upa)` reproduces the released
+  order. Both are topological orders, and every kernel gives the same answer
+  under either, up to the order the floating-point sums are added in;
+* the released cell areas are on the sphere of radius 6 371 000 m, which is
+  what `geodist.cell_area_m2` computes by default; the C code defaults to the
+  WGS84 ellipsoid, so a rerun of the C code gives areas that
+  are 0.45 per cent smaller at the equator and 0.56 per cent larger at 60
+  degrees unless it is told to use the sphere. `FlowTopo(..., earth="wgs84")`
+  computes the ellipsoid's areas here.

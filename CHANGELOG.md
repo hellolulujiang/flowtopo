@@ -1,8 +1,10 @@
 # Changelog
 
-## 1.1.0 (2026-09-28)
+## 1.0.3 (2026-09-28)
 
-Goes with version 1.1 of the FlowTopo C code. Every fix below was checked against the C code and on a small grid; 182 tests
+1.0.1 and 1.0.2 were internal versions and were not released.
+
+Every fix below was checked against the C code and on a small grid; 182 tests
 pass.
 
 Results that change:
