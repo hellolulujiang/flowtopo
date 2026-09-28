@@ -49,7 +49,8 @@ ord = topo.strahler_order(ordering="dfs",
 
 `d8` is a 2-D uint8 array in the MERIT Hydro convention: powers of two clockwise
 from east, 0 and 255 terminal, 247 nodata. `transform` is a six-element GDAL
-GeoTransform, needed only by the two distance kernels.
+GeoTransform, needed by the two distance kernels and by the upstream drainage area when no
+`cell_area` is given (the areas are worked out from it).
 
 To read the bundled example instead:
 
