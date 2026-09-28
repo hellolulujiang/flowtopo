@@ -255,10 +255,11 @@ layering and by both partitions.
 Metres per degree from the WGS-84 series expansion, and the area of a lat-lon
 pixel: on the sphere of radius 6 371 000 m by default (the earth the released
 products are on), or on the WGS84 ellipsoid with `model="wgs84"`
-(`FlowTopo(..., earth="wgs84")`), the exact zone of the ellipsoid. Checked against pyproj: metres per degree agree to 1e-5, the
-series' own accuracy. Cell area matches the closed-form spherical value on
-square and non-square grids alike, and summing a whole-globe grid reproduces
-4 pi R squared.
+(`FlowTopo(..., earth="wgs84")`), the exact area of the ellipsoid's zone.
+Checked against pyproj: metres per degree agree to 1e-5, the series' own
+accuracy. On the sphere, the cell area matches the closed-form spherical value
+on square and non-square grids alike, and summing a whole-globe grid
+reproduces 4 pi R squared.
 
 Two approximations are worth knowing about, both small on a 3 arc-second grid
 and larger on a coarse one.

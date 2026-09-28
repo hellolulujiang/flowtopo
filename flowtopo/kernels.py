@@ -64,8 +64,8 @@ def _checked_nodata(nodata, dtype):
     value = float(nodata)
     if np.isnan(value):
         raise ValueError("nodata must be a number, not NaN")
-    # checked as the type the kernel holds it in: -1e-50 is negative but 0 in float32, and passed.
-    # The value returned is that one
+    # checked as the type the kernel holds it in: -1e-50 is negative as a double but 0 in float32, so a check
+    # on the double would let it through.  The value returned is that one
     in_type = dtype(value)
     if not (np.isfinite(in_type) and in_type < 0):
         raise ValueError(f"nodata must be negative, and stay so in {np.dtype(dtype).name} (areas and distances are "

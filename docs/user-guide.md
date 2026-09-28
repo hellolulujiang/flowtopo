@@ -184,7 +184,7 @@ For a layering you also choose how a cell and its receiver exchange the value:
 | --- | --- | --- |
 | `pull` | the receiver gathers from its donors | always; needs the adjacency table |
 | `push` | each cell writes into its receiver | only under `cfds` |
-| `atomic_push` | the same scatter through `np.add.at` | always, except Strahler order, which has none |
+| `atomic_push` | the same scatter through `np.add.at` (`np.maximum.at` for the longest upstream path) | always, except Strahler order, which has none |
 
 ```python
 upa = topo.upstream_area(layering="cfds", manner="push")

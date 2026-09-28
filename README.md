@@ -83,7 +83,7 @@ MERIT-FullBasin do.
 
 Eight structures, grouped by the question each one answers, and three ways
 to pass a value from a cell to its receiver. All are built from the D8 grid.
-Every animation runs on the same two-basin example; click one for the
+Every animation runs on the bundled example basin; click one for the
 full-size MP4, or see all nine on the
 [animation page](https://hellolulujiang.github.io/flowtopo/).
 
@@ -172,8 +172,8 @@ time. Under the conflict-free layering no two cells in a layer share a
 receiver, so the push adds in the same order every time and gives
 bit-identical results at any thread count. Strahler stream order cannot be done with
 one atomic operation, because its confluence rule is a comparison and a
-count, not an addition; the only parallel push for it is under the
-conflict-free layering. When `manner` is not given, the `FlowTopo` methods pick a safe one for the
+count, not an addition; within a layer, a push is safe for it only under the
+conflict-free layering (on one thread: the threaded kernels do not include it). When `manner` is not given, the `FlowTopo` methods pick a safe one for the
 layering; `parallel.upstream_area` defaults to push, which is safe only under
 `cfds`.
 
