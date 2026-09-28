@@ -182,11 +182,6 @@ source is included; the code was written against those conventions, and
 takes. The borrowed and the original parts are set out in
 [`docs/methods.md`](docs/methods.md).
 
-**Claude** (Anthropic) assisted with the Python port, the tests, the
-documentation and the packaging; the authors reviewed the work, and the
-commit history records where. The methods and the results are the authors'
-own, described in the companion manuscript.
-
 ## Contact
 
 <lulu_jiang@pku.edu.cn>, or a
