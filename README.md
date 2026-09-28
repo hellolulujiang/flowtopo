@@ -83,7 +83,8 @@ MERIT-FullBasin do.
 
 Eight structures, grouped by the question each one answers, and three ways
 to pass a value from a cell to its receiver. All are built from the D8 grid.
-Every animation runs on the bundled example basin; click one for the
+The six orderings and layerings run on the bundled example basin, the three
+manners on a small grid of two basins; click one for the
 full-size MP4, or see all nine on the
 [animation page](https://hellolulujiang.github.io/flowtopo/).
 
