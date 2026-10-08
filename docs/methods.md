@@ -184,8 +184,9 @@ shed, and the heaviest bordering it; in the lightest subregion, the heaviest,
 which it cannot grow around, and the heaviest bordering it (as a basin that
 walls off a piece of land). A basin heavier than an equal share times
 `imbalance_target` in a subregion over the target can never be balanced whole,
-and the heaviest such is then the only one tried. The best has the lowest
-max/mean, then the least overload (how much the subregions over the mean exceed
+and the heaviest such is then the only one tried. They are tried the heaviest
+first, at most `OPEN_TRIALS` (4), and a round stops at the first that brings the
+plan within the target. The best has the lowest max/mean, then the least overload (how much the subregions over the mean exceed
 it, in means); it is kept only when it lowers max/mean by `OPEN_MIN_GAIN`
 (0.01) or more, or leaves the heaviest subregion no heavier and lowers the
 overload by that much -- so a basin that lightens one of two equally heavy

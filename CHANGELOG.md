@@ -11,15 +11,16 @@ Results that change:
   those kept so far: in every subregion over the target, the heaviest (which it cannot shed) and the
   heaviest bordering it; in the lightest subregion, the heaviest (which it cannot grow around) and the
   heaviest bordering it, such as a basin that walls off a piece of land. A basin heavier than an equal
-  share in a subregion over the target can never be balanced whole and is then the only one tried. The
-  best has the lowest max/mean, then the least overload (how much the subregions over the mean exceed
+  share in a subregion over the target can never be balanced whole and is then the only one tried. They
+  are tried the heaviest first, at most `OPEN_TRIALS` (4), and a round stops at the first that brings
+  the plan within the target. The best has the lowest max/mean, then the least overload (how much the subregions over the mean exceed
   it, in means); it is kept only when it lowers max/mean by `OPEN_MIN_GAIN` (0.01) or more, or leaves
   the heaviest subregion no heavier and lowers the overload by that much, so that a basin that lightens
   one of two equally heavy subregions counts. The rounds stop at the target, at a round without such a gain, or at
   four basins.
 * The bundled example is one basin and gives the same loads as 1.0.4.
 
-New: `flowtopo.partition.OPEN_MIN_GAIN`.
+New: `flowtopo.partition.OPEN_MIN_GAIN` and `OPEN_TRIALS`.
 
 ## 1.0.4 (2026-10-07)
 
