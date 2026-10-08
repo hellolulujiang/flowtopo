@@ -440,14 +440,15 @@ class FlowTopo:
 
     # -- partitions --------------------------------------------------------
 
-    def partition(self, n_parts=4, level="subbasin"):
+    def partition(self, n_parts=4, level="subbasin", **options):
         """Split the network into ``n_parts`` independent subregions.
 
-        ``level="basin"`` keeps every basin whole; ``level="subbasin"``
-        decomposes an oversized basin along its mainstem. Returns
-        ``(part, load)``; see :func:`flowtopo.partition.partition`.
+        ``level="basin"`` keeps every basin whole; ``level="subbasin"`` opens
+        the largest basins along their mainstems while the subregions are
+        unequal. Returns ``(part, load)``; the ``options`` and the details are
+        in :func:`flowtopo.partition.partition`.
         """
-        return _partition.partition(self, n_parts=n_parts, level=level)
+        return _partition.partition(self, n_parts=n_parts, level=level, **options)
 
     # -- locality ----------------------------------------------------------
 

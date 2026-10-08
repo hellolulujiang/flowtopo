@@ -244,17 +244,30 @@ server, with the thread count inside each subregion set where that server's
 memory bandwidth saturated.
 
 `part` holds a subregion index per cell, `-1` outside the network and
-`flowtopo.MAINSTEM` (-2) on a mainstem cell held back to the second stage. With
-`level="basin"` whole basins are assigned to subregions by cell count; a basin
-is never split, so one dominant basin leaves the other processors idle. The
+`flowtopo.MAINSTEM` (-2) on a mainstem cell held back to the second stage.
+Both levels put contiguity first and balance second: every subregion is one
+piece of land, the two banks of a held-back mainstem counting as touching, and
+two land masses that do not touch never share one. With `level="basin"` every
+basin stays whole, so one dominant basin leaves the other processors idle. The
 bundled example is a single basin, so it shows this directly: basin-level gives
-`[93432, 0, 0, 0]`, subbasin-level `[23121, 23121, 23121, 23120]`.
+`[93432, 0, 0, 0]`, subbasin-level `[23487, 23107, 23107, 23108]`.
 
-`level="subbasin"` cuts an oversized basin along its mainstem, found by walking
-upstream from the outlet and taking the larger tributary at each confluence.
-The tributary subtrees are dealt to the lighter subregions; the mainstem
-depends on them, so it is marked `flowtopo.MAINSTEM` and runs in a second stage
-after they finish.
+`level="subbasin"` opens the largest basins, one after another while the
+subregions are unequal, along their mainstems, found by walking upstream from
+the outlet and taking the larger tributary at each confluence, into the
+tributary subtrees that drain into them; a tributary is not opened further.
+The subtrees and the other basins are divided into connected subregions with
+METIS and balanced by moving units along the boundaries. The mainstem stays
+with the subregion of its most upstream tributaries down to `P_min`, the first
+cell where a tributary of another subregion enters; below it, the mainstem
+depends on several subregions, so it is marked `flowtopo.MAINSTEM` and runs in
+a second stage after they finish. `imbalance_target`, `min_subtree_size`,
+`seed` and `refine` tune it (see the docstring).
+
+The partitions released in MERIT-FlowTopo were made by the C code with an
+earlier rule, which deals basins and tributary subtrees to the lightest
+subregion without keeping a subregion in one piece; from 1.0.4 this package
+partitions as above.
 
 ## Threads
 

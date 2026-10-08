@@ -145,27 +145,45 @@ differently, which changes the memory-access pattern.
 
 Each returns a subregion index per cell, `-1` outside the network. Both cut
 along the drainage hierarchy, so no value crosses a subregion boundary while a
-kernel runs. Assignment is longest-processing-time-first: items are placed
-largest first, each into the lightest subregion so far.
+kernel runs, and both put contiguity first and balance second: a subregion is
+one piece of land, the two banks of a held-back mainstem counting as touching,
+and two land masses that do not touch never share one.
+
+The units, whole basins or tributary subtrees, are the nodes of a graph whose
+edges are their shared raster boundaries, weighted by the length of the
+boundary. A small component of that graph (an island, under half an equal
+share) goes with its nearest land; the land masses get the subregions so that
+the heaviest is as light as can be; and each mass is cut by contiguous
+weighted METIS (`pymetis`, best of four seeds). A unit heavier than an equal
+share of its mass is a subregion of its own first, together with the small
+units it cuts off. Boundary units then move from heavier to lighter
+neighbouring subregions until the heaviest is within `imbalance_target`
+(default 1.005) of an equal share or no move helps; a unit whose departure
+would cut its subregion in two takes the cut-off piece with it, or does not
+move, and an island moves whole, to a subregion near it.
 
 ### `partition(topo, n_parts, level="basin")`
 
-Whole basins assigned to subregions, weighted by cell count. A basin is never
-split, so a dominant basin leaves the other subregions idle.
-
-*Complexity:* O(N + B log B) time, O(N) space.
+Every basin stays whole. A dominant basin cannot be split, so it is the
+heaviest subregion.
 
 ### `partition(topo, n_parts, level="subbasin")`
 
-Any basin larger than one subregion's share is decomposed along its mainstem,
-found by walking upstream from the outlet and taking the larger tributary at
-each confluence. The tributary subtrees become items in the assignment; the
-mainstem depends on them and is held back to a second stage, marked
+When whole basins are not within `imbalance_target` of an equal share, the
+largest basin is opened along its mainstem, found by walking upstream from the
+outlet and taking the larger tributary at each confluence, into the tributary
+subtrees that drain into the mainstem; then the next largest while the
+subregions are still unequal, up to four, and the most balanced result is
+kept. A tributary is never opened further. Each mainstem cell weighs with the
+tributary that enters it. Above `P_min`, the most upstream mainstem cell where
+a tributary of another subregion enters, the mainstem stays with the
+subregion of its most upstream tributaries (its trunk); below `P_min` it
+depends on several subregions and is held back to a second stage, marked
 `flowtopo.MAINSTEM`.
 
-*Complexity:* O(N + E + M log M) time, M being the number of items the
-assignment sorts: one per undecomposed basin plus one per tributary subtree
-split off a decomposed one. O(N) space.
+*Complexity:* building the graph is O(N); the partition works on the graph,
+whose nodes are basins and tributary subtrees, far fewer than the N cells:
+METIS is near-linear in its size, and each balance sweep is linear in it.
 
 ## Kernels
 

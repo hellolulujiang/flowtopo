@@ -1,5 +1,40 @@
 # Changelog
 
+## 1.0.4 (2026-10-07)
+
+Results that change:
+
+* **The partition keeps every subregion in one piece, then balances it.** Both levels now cut a graph
+  whose nodes are basins or tributary subtrees and whose edges are their shared boundaries: the land
+  masses get the subregions so that the heaviest is as light as can be, each mass is cut by contiguous
+  weighted METIS, and boundary units then move from heavier to lighter neighbours. A subregion is one
+  piece of land (the two banks of a held-back mainstem count as touching), two land masses that do not
+  touch never share one, and an island goes with a subregion near it. Before, basins and tributary
+  subtrees were dealt largest first to the lightest subregion, wherever they lay.
+* **The subbasin level opens the largest basins while the subregions are unequal**, up to four, one
+  layer only (a tributary is never opened further), and keeps the most balanced result. The mainstem
+  stays with the subregion of its most upstream tributaries down to `P_min`, the first cell where a
+  tributary of another subregion enters; only the mainstem below it is held back as
+  `flowtopo.MAINSTEM` (before: every cell of the mainstem).
+* On the example basin the subbasin loads are `[23487, 23107, 23107, 23108]`, 1.2 % above the mean,
+  each subregion one piece with the held-back mainstem; before, `[23121, 23121, 23121, 23120]` with
+  each subregion in about 650 pieces.
+* The partitions released in MERIT-FlowTopo were made by the C code with the earlier rule; this
+  package now partitions differently from it.
+
+New: `partition()` and `FlowTopo.partition()` take `seed`, `refine`, `min_subtree_size` and
+`imbalance_target`. The package now depends on `scipy` and `pymetis`.
+
+Input checks, from internal versions after 1.0.3 (each was accepted before and gave a wrong answer or an
+unclear error):
+
+* A constructor mask may have the raster's two-dimensional shape; it is flattened before the network is
+  cut.
+* An incomplete transform raises a `ValueError` before any of its terms is read.
+* Grid dimensions must be two whole, nonnegative numbers.
+* A raster-shaped `upa` is flattened for the depth-first order, and the channel and Strahler inputs must
+  hold one value per cell.
+
 ## 1.0.3 (2026-09-28)
 
 1.0.1 and 1.0.2 were internal versions and were not released.
