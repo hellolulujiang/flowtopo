@@ -623,8 +623,8 @@ def test_subbasin_level_tries_basins_in_or_beside_the_overloaded_and_lightest_su
         cells = (topo.basins == labels[opened[-1]]).reshape(topo.shape)
         assert _in_or_beside(cells, np.isin(part, ends).reshape(topo.shape))
     for size in {len(opened) for opened, _ in tried}:
-        # in or beside every subregion over the target and the lightest: at most 4 x 2
-        assert sum(len(opened) == size for opened, _ in tried) <= 8
+        # at most OPEN_TRIALS a round, the heaviest of those in or beside
+        assert sum(len(opened) == size for opened, _ in tried) <= partition.OPEN_TRIALS
 
 
 def test_subbasin_level_opens_both_of_two_equal_dominant_basins():
