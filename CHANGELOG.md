@@ -14,8 +14,8 @@ Results that change:
   share in a subregion over the target can never be balanced whole and is then the only one tried. The
   best has the lowest max/mean, then the least overload (how much the subregions over the mean exceed
   it, in means); it is kept only when it lowers max/mean by `OPEN_MIN_GAIN` (0.01) or more, or leaves
-  max/mean as it is and lowers the overload by that much, so that a basin that lightens one of two
-  equally heavy subregions counts. The rounds stop at the target, at a round without such a gain, or at
+  the heaviest subregion no heavier and lowers the overload by that much, so that a basin that lightens
+  one of two equally heavy subregions counts. The rounds stop at the target, at a round without such a gain, or at
   four basins.
 * The bundled example is one basin and gives the same loads as 1.0.4.
 

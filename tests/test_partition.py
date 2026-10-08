@@ -599,29 +599,41 @@ def _in_or_beside(cells, region):
     return bool(np.any(grown & region))
 
 
-def test_subbasin_level_tries_basins_in_or_beside_the_heaviest_and_lightest_subregions(monkeypatch):
+def test_subbasin_level_tries_basins_in_or_beside_the_overloaded_and_lightest_subregions(monkeypatch):
     topo = rivers(21, [11] * 5)
     part_1, load_1 = topo.partition(4, "basin")
-    ends = np.isin(part_1, [int(np.argmax(load_1)), int(np.argmin(load_1))]).reshape(topo.shape)
     labels = np.unique(topo.basins[topo.mask & (topo.basins > 0)])
     tried = []
     original = partition._open_basins
 
     def recording(topo_, opened, *args, **kwargs):
-        tried.append(np.asarray(opened).copy())
-        return original(topo_, opened, *args, **kwargs)
+        result = original(topo_, opened, *args, **kwargs)
+        tried.append((tuple(int(b) for b in opened), result))
+        return result
 
     monkeypatch.setattr(partition, "_open_basins", recording)
     topo.partition(4, "subbasin", min_subtree_size=1)
-    first_round = [opened for opened in tried if opened.size == 1]
-    # in or beside every part over the target and the lightest: at most 4 x 2
-    assert 1 <= len(first_round) <= 8
-    assert len({int(opened[0]) for opened in first_round}) == len(first_round)
-    for opened in first_round:
-        cells = (topo.basins == labels[opened[0]]).reshape(topo.shape)
-        assert _in_or_beside(cells, ends)
-    for size in {opened.size for opened in tried}:
-        assert sum(opened.size == size for opened in tried) <= 8
+    results = dict(tried)
+    assert tried
+    for opened, _ in tried:
+        # every round against the result it starts from: Method 1's, or the one kept
+        part, load = (part_1, load_1) if len(opened) == 1 else results[opened[:-1]]
+        share = load.sum() / load.size
+        ends = [k for k in range(load.size) if load[k] > share * 1.005] + [int(np.argmin(load))]
+        cells = (topo.basins == labels[opened[-1]]).reshape(topo.shape)
+        assert _in_or_beside(cells, np.isin(part, ends).reshape(topo.shape))
+    for size in {len(opened) for opened, _ in tried}:
+        # in or beside every subregion over the target and the lightest: at most 4 x 2
+        assert sum(len(opened) == size for opened, _ in tried) <= 8
+
+
+def test_subbasin_level_opens_both_of_two_equal_dominant_basins():
+    # two 41 x 41 basins: whole basins give [1681, 1681, 0, 0]; opening one alone
+    # leaves the heaviest as heavy, but lowers the overload, and the other follows
+    topo = rivers(41, [41, 41])
+    part, load = topo.partition(4, "subbasin", min_subtree_size=1)
+    check(topo, part, load)
+    assert load.max() / load.mean() <= 1.05
 
 
 def test_subbasin_level_opens_no_basin_without_a_clear_gain(monkeypatch):
