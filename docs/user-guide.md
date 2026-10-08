@@ -245,9 +245,12 @@ memory bandwidth saturated.
 
 `part` holds a subregion index per cell, `-1` outside the network and
 `flowtopo.MAINSTEM` (-2) on a mainstem cell held back to the second stage.
-Both levels put contiguity first and balance second: every subregion is one
-piece of land, the two banks of a held-back mainstem counting as touching, and
-two land masses that do not touch never share one. With `level="basin"` every
+Both levels put contiguity first and balance second: within a land mass every
+subregion is one piece, the two banks of a held-back mainstem counting as
+touching. Land is one of the largest components of the network, each at least
+half an equal share and at most one per subregion; a smaller one, or one
+beyond that number, goes as an island with the subregion of its nearest land.
+With `level="basin"` every
 basin stays whole, so one dominant basin leaves the other processors idle. The
 bundled example is a single basin, so it shows this directly: basin-level gives
 `[93432, 0, 0, 0]`, subbasin-level `[23487, 23107, 23107, 23108]`.

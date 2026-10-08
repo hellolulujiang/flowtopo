@@ -145,15 +145,17 @@ differently, which changes the memory-access pattern.
 
 Each returns a subregion index per cell, `-1` outside the network. Both cut
 along the drainage hierarchy, so no value crosses a subregion boundary while a
-kernel runs, and both put contiguity first and balance second: a subregion is
-one piece of land, the two banks of a held-back mainstem counting as touching,
-and two land masses that do not touch never share one.
+kernel runs, and both put contiguity first and balance second: within a land
+mass a subregion is one piece, the two banks of a held-back mainstem counting
+as touching.
 
 The units, whole basins or tributary subtrees, are the nodes of a graph whose
 edges are their shared raster boundaries, weighted by the length of the
-boundary. A small component of that graph (an island, under half an equal
-share) goes with its nearest land; the land masses get the subregions so that
-the heaviest is as light as can be; and each mass is cut by contiguous
+boundary. Land is one of the largest components of that graph, each at least
+half an equal share and at most one per subregion; every other component is
+an island and goes with its nearest land, so two components share a
+subregion only when there are more of them than land can hold. The land
+masses get the subregions so that the heaviest is as light as can be; and each mass is cut by contiguous
 weighted METIS (`pymetis`, best of four seeds). A unit heavier than an equal
 share of its mass is a subregion of its own first, together with the small
 units it cuts off. Boundary units then move from heavier to lighter
