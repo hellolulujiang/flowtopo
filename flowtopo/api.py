@@ -444,8 +444,7 @@ class FlowTopo:
         """Split the network into ``n_parts`` independent subregions.
 
         ``level="basin"`` keeps every basin whole; ``level="subbasin"`` opens
-        the largest basins along their mainstems while the subregions are
-        unequal. Returns ``(part, load)``; the ``options`` and the details are
+        as few basins along their mainstems as the balance needs. Returns ``(part, load)``; the ``options`` and the details are
         in :func:`flowtopo.partition.partition`.
         """
         return _partition.partition(self, n_parts=n_parts, level=level, **options)

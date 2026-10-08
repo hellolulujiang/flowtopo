@@ -174,12 +174,17 @@ heaviest subregion.
 
 ### `partition(topo, n_parts, level="subbasin")`
 
-When whole basins are not within `imbalance_target` of an equal share, the
-largest basin is opened along its mainstem, found by walking upstream from the
-outlet and taking the larger tributary at each confluence, into the tributary
-subtrees that drain into the mainstem; then the next largest while the
-subregions are still unequal, up to four, and the most balanced result is
-kept. A tributary is never opened further. Each mainstem cell weighs with the
+When whole basins are not within `imbalance_target` of an equal share, basins
+are opened along their mainstems, found by walking upstream from the outlet and
+taking the larger tributary at each confluence, into the tributary subtrees
+that drain into the mainstem -- as few as the balance needs. Each round tries
+two basins, each opened together with those kept so far: the heaviest whole
+basin of the heaviest subregion, which that subregion cannot shed, and that of
+the lightest, which it cannot grow around; the better is kept only when it
+lowers the heaviest subregion by `OPEN_MIN_GAIN` (0.01) of the mean or more.
+The rounds stop at the target, at a round without such a gain, or at four
+basins. So the first basin opened is the dominant one, and a further one only a
+basin that holds the balance up. A tributary is never opened further. Each mainstem cell weighs with the
 tributary that enters it. Above `P_min`, the most upstream mainstem cell where
 a tributary of another subregion enters, the mainstem stays with the
 subregion of its most upstream tributaries (its trunk); below `P_min` it

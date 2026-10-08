@@ -256,10 +256,11 @@ basin stays whole, so one dominant basin leaves the other processors idle. The
 bundled example is a single basin, so it shows this directly: basin-level gives
 `[93432, 0, 0, 0]`, subbasin-level `[23487, 23107, 23107, 23108]`.
 
-`level="subbasin"` opens the largest basins, one after another while the
-subregions are unequal, along their mainstems, found by walking upstream from
-the outlet and taking the larger tributary at each confluence, into the
-tributary subtrees that drain into them; a tributary is not opened further.
+`level="subbasin"` opens as few basins as the balance needs -- the dominant
+one first, another only where it holds the balance up and clearly pays off --
+along their mainstems, found by walking upstream from the outlet and taking the
+larger tributary at each confluence, into the tributary subtrees that drain
+into them; a tributary is not opened further.
 The subtrees and the other basins are divided into connected subregions with
 METIS and balanced by moving units along the boundaries. The mainstem stays
 with the subregion of its most upstream tributaries down to `P_min`, the first

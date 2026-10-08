@@ -15,9 +15,11 @@ balance second: every subregion is one piece of land.
 ``subbasin``
     When the whole basins are not within ``imbalance_target`` of an equal
     share, basins are opened along their mainstems into the tributary
-    subtrees that drain into the mainstem -- the largest basin first, then the
-    next, while the subregions are still unequal (one layer only: a tributary
-    is never opened further).  The tributaries and the other basins form one
+    subtrees that drain into the mainstem -- as few as the balance needs: the
+    dominant basin first; another only when it is the heaviest whole basin of
+    the heaviest or the lightest subregion and opening it lowers the heaviest
+    subregion by ``OPEN_MIN_GAIN`` of the mean or more (one layer only: a
+    tributary is never opened further).  The tributaries and the other basins form one
     graph, divided at once; each mainstem cell weighs with the tributary that
     enters it.  Below ``P_min``, the most upstream mainstem cell where a
     tributary of another subregion enters, each opened mainstem is held back
@@ -62,6 +64,10 @@ enough for the refinement; among those, the shortest boundary wins."""
 
 MAX_OPENED_BASINS = 4
 """Method 2 opens at most this many basins along their mainstems."""
+
+OPEN_MIN_GAIN = 0.01
+"""Method 2 keeps an opened basin only when it lowers the heaviest subregion
+by this much of the mean (max/mean) or more."""
 
 ARCHIPELAGO_NEIGHBOURS = 4
 """Without land, each component is linked to this many nearest for METIS; in
@@ -1692,24 +1698,34 @@ def _open_basins(
     return part, load
 
 
-def _open_largest(
+def _open_rivers(
     topo, part, load, labels, basin_node_parts, n_parts, min_subtree_size,
     imbalance_target, seed, refine,
 ):
-    """Method 2: open the largest basins while the subregions are unequal.
+    """Method 2: open as few basins along their mainstems as the balance needs.
 
-    Method 1's subregions stand when they are within ``imbalance_target``;
-    otherwise the largest basin is opened, then the next (at most
-    ``MAX_OPENED_BASINS``), and the most balanced result, Method 1's included,
-    is kept.  A basin that is one chain of cells has no tributaries to open
-    into and stays whole.
+    Method 1's subregions stand when they are within ``imbalance_target``.
+    Otherwise, round by round, two basins are tried, each opened together with
+    those kept so far: the heaviest whole basin of the heaviest subregion
+    (which cannot shed it) and that of the lightest subregion (which cannot
+    grow around it); the better is kept only when it lowers the heaviest
+    subregion by ``OPEN_MIN_GAIN`` of the mean or more.  The rounds stop at the
+    target, at a round without such a gain, or at ``MAX_OPENED_BASINS``.  So
+    the first basin opened is the dominant one, and a further one only a basin
+    that holds the balance up, and only when that clearly pays off.  A basin
+    that is one chain of cells has no tributaries to open into and stays
+    whole.
     """
     best, best_ratio = (part, load), _ratio(load)
     if labels.size == 0 or best_ratio <= imbalance_target:
         return best
     idxs_ds, mask, basins = topo.idxs_ds, topo.mask, topo.basins
     valid = mask & (basins > 0)
-    weights = np.bincount(np.searchsorted(labels, basins[valid]), minlength=labels.size)
+    cells = np.flatnonzero(valid)
+    label_of_cell = np.searchsorted(labels, basins[cells])
+    weights = np.bincount(label_of_cell, minlength=labels.size)
+    # one cell of every basin: a whole basin is in one subregion, so it tells which
+    first_cell = cells[np.unique(label_of_cell, return_index=True)[1]]
     seq_d2u = seq_dfs_from_pit(idxs_ds)
     # cells are counted in float64, exact to 2**53 (float32 stops at 2**24)
     upstream = upstream_area(
@@ -1719,19 +1735,35 @@ def _open_largest(
     sources = np.bincount(
         np.searchsorted(labels, basins[valid & (upstream == 1.0)]), minlength=labels.size
     )
-    order = np.argsort(-weights, kind="stable")
-    order = order[sources[order] > 1]
+    by_weight = np.argsort(-weights, kind="stable")
     us_table, n_up = topo.upstream()
-    for n_opened in range(1, min(MAX_OPENED_BASINS, order.size) + 1):
-        candidate = _open_basins(
-            topo, order[:n_opened], labels, basin_node_parts, seq_d2u, upstream,
-            us_table, n_up, n_parts, min_subtree_size, imbalance_target, seed, refine,
-        )
-        ratio = _ratio(candidate[1])
-        if ratio < best_ratio - 1e-12:
-            best, best_ratio = candidate, ratio
-        if ratio <= imbalance_target:
+    opened = []
+    while best_ratio > imbalance_target and len(opened) < MAX_OPENED_BASINS:
+        part_of_basin = best[0][first_cell]
+        eligible = sources > 1
+        eligible[opened] = False
+        candidates = []
+        for subregion in (int(np.argmax(best[1])), int(np.argmin(best[1]))):
+            pool = by_weight[eligible[by_weight] & (part_of_basin[by_weight] == subregion)]
+            if pool.size and int(pool[0]) not in candidates:
+                candidates.append(int(pool[0]))
+        if not candidates:
             break
+        round_best = None
+        for candidate in candidates:
+            trial = _open_basins(
+                topo, np.asarray(opened + [int(candidate)]), labels, basin_node_parts,
+                seq_d2u, upstream, us_table, n_up, n_parts, min_subtree_size,
+                imbalance_target, seed, refine,
+            )
+            ratio = _ratio(trial[1])
+            if round_best is None or ratio < round_best[2] - 1e-12:
+                round_best = (int(candidate), trial, ratio)
+        candidate, trial, ratio = round_best
+        if ratio > best_ratio - OPEN_MIN_GAIN:
+            break
+        opened.append(candidate)
+        best, best_ratio = trial, ratio
     return best
 
 
@@ -1755,7 +1787,7 @@ def partition(
         each, so a subregion's working set stays in that processor's own
         memory; threads then divide the work inside a subregion.
     level : {"basin", "subbasin"}
-        ``"basin"`` keeps every basin whole. ``"subbasin"`` opens the largest
+        ``"basin"`` keeps every basin whole. ``"subbasin"`` opens the fewest
         basins along their mainstems while the subregions are unequal.
     seed : int
         First METIS seed (``METIS_SEEDS`` are run).
@@ -1804,7 +1836,7 @@ def partition(
         topo, n_parts, seed, imbalance_target, refine
     )
     if level == "subbasin":
-        part, load = _open_largest(
+        part, load = _open_rivers(
             topo, part, load, labels, node_parts, n_parts, min_subtree_size,
             imbalance_target, seed, refine,
         )
