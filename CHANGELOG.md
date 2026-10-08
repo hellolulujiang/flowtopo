@@ -8,9 +8,10 @@ Results that change:
   whose nodes are basins or tributary subtrees and whose edges are their shared boundaries: the land
   masses get the subregions so that the heaviest is as light as can be, each mass is cut by contiguous
   weighted METIS, and boundary units then move from heavier to lighter neighbours. Within a land mass a
-  subregion is one piece (the two banks of a held-back mainstem count as touching); land is one of the
-  largest components, each at least half an equal share and at most one per subregion, and every other
-  component goes as an island with a subregion near it. Before, basins and tributary
+  subregion is one piece (the two banks of a held-back mainstem count as touching); land is the largest
+  components, at most one per subregion (those of at least half an equal share, and the next largest
+  when these are too few to be cut into every subregion), and every other component goes as an island
+  with a subregion near it. Before, basins and tributary
   subtrees were dealt largest first to the lightest subregion, wherever they lay.
 * **The subbasin level opens the largest basins while the subregions are unequal**, up to four, one
   layer only (a tributary is never opened further), and keeps the most balanced result. The mainstem

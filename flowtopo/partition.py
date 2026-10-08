@@ -24,17 +24,19 @@ balance second: every subregion is one piece of land.
     to a second stage, marked :data:`MAINSTEM`; above it, the mainstem stays
     with the subregion of its most upstream tributaries (its trunk).
 
-Land is one of the largest components of the graph -- what touches on the
-ground, the two banks of an opened mainstem joined -- each at least half an
-equal share and at most one per subregion; every other component (an island)
-goes with its nearest land, a land mass.  The masses get the subregions so that
-the heaviest is as light as can be, and no subregion spans two masses.  A mass is
-cut by contiguous weighted METIS, run from several seeds on a graph whose
-small tributaries are grouped with a larger neighbour; the most balanced
-result is kept, and boundary nodes then move, one tributary or basin at a
-time, from heavier to lighter neighbouring subregions until every one is
-within ``imbalance_target`` of its share.  An island moves whole, to a
-subregion near it.  A subregion is never cut in two; the odd piece left apart
+Land is the largest components of the graph -- what touches on the ground, the
+two banks of an opened mainstem joined -- at most one per subregion: those of
+at least half an equal share, and the next largest when these are too few to be
+cut into every subregion.  Every other component (an island) goes with its
+nearest land, a land mass.  The masses get the subregions so that the heaviest
+is as light as can be, and no subregion spans two masses; when no component is
+land (an archipelago), METIS divides the components.  A mass is cut by
+contiguous weighted METIS, run from several seeds on a graph whose small
+tributaries are grouped with a larger neighbour; the most balanced result is
+kept, and boundary nodes then move, one tributary or basin at a time, from
+heavier to lighter neighbouring subregions until every one is within
+``imbalance_target`` of its share or no move helps.  An island moves whole, to
+a subregion near it.  A subregion is never cut in two; the odd piece left apart
 from its subregion joins the one around it.
 """
 

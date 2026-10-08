@@ -151,10 +151,13 @@ as touching.
 
 The units, whole basins or tributary subtrees, are the nodes of a graph whose
 edges are their shared raster boundaries, weighted by the length of the
-boundary. Land is one of the largest components of that graph, each at least
-half an equal share and at most one per subregion; every other component is
-an island and goes with its nearest land, so two components share a
-subregion only when there are more of them than land can hold. The land
+boundary. Land is the largest components of that graph, at most one per
+subregion: those of at least half an equal share, and the next largest too
+when these have too few units to be cut into every subregion. Every other
+component is an island and goes with its nearest land, so two components
+share a subregion only when there are more of them than land can hold; when
+no component is that large (an archipelago), METIS divides the components,
+each linked to its nearest. The land
 masses get the subregions so that the heaviest is as light as can be; and each mass is cut by contiguous
 weighted METIS (`pymetis`, best of four seeds). A unit heavier than an equal
 share of its mass is a subregion of its own first, together with the small
