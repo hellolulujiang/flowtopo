@@ -189,11 +189,11 @@ max/mean, then the least overload (how much the subregions over the mean exceed
 it, in means); it is kept only when it lowers max/mean by `OPEN_MIN_GAIN`
 (0.01) or more, or leaves the heaviest subregion no heavier and lowers the
 overload by that much -- so a basin that lightens one of two equally heavy
-subregions counts. The first basin opened is usually the dominant one (always,
-when it is heavier than an equal share).
-The rounds stop at the target, at a round without such a gain, or at four
-basins. So the first basin opened is the dominant one, and a further one only a
-basin that holds the balance up. A tributary is never opened further. Each mainstem cell weighs with the
+subregions counts. The rounds stop at the target, at a round without such a
+gain, or at four basins. The first basin opened is usually the dominant one
+(always, when it is heavier than an equal share times `imbalance_target`), and
+a further one only a basin that holds the balance up. A tributary is never
+opened further. Each mainstem cell weighs with the
 tributary that enters it. Above `P_min`, the most upstream mainstem cell where
 a tributary of another subregion enters, the mainstem stays with the
 subregion of its most upstream tributaries (its trunk); below `P_min` it
