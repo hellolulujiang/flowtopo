@@ -183,11 +183,11 @@ kept so far: in every subregion over the target, the heaviest, which it cannot
 shed, and the heaviest bordering it; in the lightest subregion, the heaviest,
 which it cannot grow around, and the heaviest bordering it (as a basin that
 walls off a piece of land). A basin heavier than an equal share in a subregion
-over the target is then the only one tried. The best leaves the least overload
-(how much the subregions over the mean exceed it, in means), and it is kept
-only when it lowers the overload by `OPEN_MIN_GAIN` (0.01) or more -- the
-overload, not max/mean, so that a basin that lightens one of two equally heavy
-subregions counts.
+over the target is then the only one tried. The best has the lowest max/mean,
+then the least overload (how much the subregions over the mean exceed it, in
+means); it is kept only when it lowers max/mean by `OPEN_MIN_GAIN` (0.01) or
+more, or leaves max/mean as it is and lowers the overload by that much -- so a
+basin that lightens one of two equally heavy subregions counts.
 The rounds stop at the target, at a round without such a gain, or at four
 basins. So the first basin opened is the dominant one, and a further one only a
 basin that holds the balance up. A tributary is never opened further. Each mainstem cell weighs with the

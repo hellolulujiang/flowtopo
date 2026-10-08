@@ -18,7 +18,8 @@ balance second: every subregion is one piece of land.
     subtrees that drain into the mainstem -- as few as the balance needs: the
     dominant basin first; another only when it is a whole basin in or beside
     a subregion over the target or the lightest subregion and opening it
-    lowers the overload of the subregions by ``OPEN_MIN_GAIN`` or more (one layer only: a
+    lowers max/mean (or, max/mean as it is, the overload) by
+    ``OPEN_MIN_GAIN`` or more (one layer only: a
     tributary is never opened further).  The tributaries and the other basins form one
     graph, divided at once; each mainstem cell weighs with the tributary that
     enters it.  Below ``P_min``, the most upstream mainstem cell where a
@@ -1742,10 +1743,11 @@ def _open_rivers(
     heaviest bordering it (as a basin that walls off a piece of land).  A basin
     heavier than an equal share in a subregion over the target can never be
     balanced whole, and the heaviest such is then the only one tried.  The best
-    leaves the least overload (``_overload``: how much the subregions over the mean
-    exceed it), and it is kept only when it lowers the overload by
-    ``OPEN_MIN_GAIN`` or more -- the overload, not max/mean, so that a basin
-    that lightens one of two equally heavy subregions counts.  The rounds stop at
+    has the lowest max/mean, then the least overload (``_overload``: how much
+    the subregions over the mean exceed it).  It is kept only when it lowers
+    max/mean by ``OPEN_MIN_GAIN`` or more, or leaves max/mean as it is and
+    lowers the overload by that much: so a basin that lightens one of two
+    equally heavy subregions counts, as the first of two that must both be opened.  The rounds stop at
     the target, at a round without such a gain, or at
     ``MAX_OPENED_BASINS``.  So the first basin opened is the dominant one, and a
     further one only a basin that holds the balance up, and only when that
@@ -1815,13 +1817,15 @@ def _open_rivers(
                 imbalance_target, seed, refine,
             )
             ratio = _ratio(trial[1])
-            key = (_overload(trial[1]), ratio)
-            if round_best is None or key[0] < round_best[3][0] - 1e-12 or (
-                key[0] <= round_best[3][0] + 1e-12 and ratio < round_best[2] - 1e-12
+            key = (ratio, _overload(trial[1]))
+            if round_best is None or ratio < round_best[2] - 1e-12 or (
+                ratio <= round_best[2] + 1e-12 and key[1] < round_best[3][1] - 1e-12
             ):
                 round_best = (int(candidate), trial, ratio, key)
         candidate, trial, ratio, key = round_best
-        if key[0] > _overload(best[1]) - OPEN_MIN_GAIN:
+        lower = ratio <= best_ratio - OPEN_MIN_GAIN
+        lighter = ratio <= best_ratio + 1e-12 and key[1] <= _overload(best[1]) - OPEN_MIN_GAIN
+        if not (lower or lighter):
             break
         opened.append(candidate)
         best, best_ratio = trial, ratio
