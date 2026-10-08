@@ -7,12 +7,13 @@ Results that change:
 * **The subbasin level opens as few basins as the balance needs.** Before (1.0.4), the largest basins
   were opened one after another, up to four, and the most balanced result was kept, however small its
   gain over fewer basins: a region could end with four opened mainstems where one did nearly as well.
-  Now each round tries two basins, each opened together with those kept so far: the heaviest whole basin
-  of the heaviest subregion (which that subregion cannot shed) and that of the lightest subregion (which
-  it cannot grow around); the better is kept only when it lowers the heaviest subregion by
-  `OPEN_MIN_GAIN` (0.01) of the mean or more. The rounds stop at the target, at a round without such a
-  gain, or at four basins. The first basin opened is the dominant one; a further one is opened only for
-  a basin that holds the balance up, such as a second large basin that walls off land behind it.
+  Now each round tries only the whole basins that can hold the balance up, each opened together with
+  those kept so far: the heaviest of the heaviest subregion (which cannot shed it) and the heaviest
+  bordering it; the heaviest of the lightest subregion (which cannot grow around it) and the heaviest
+  bordering it, such as a basin that walls off a piece of land. A basin of the heaviest subregion
+  heavier than an equal share can never be balanced whole and is then the only one tried. The best is
+  kept only when it lowers the heaviest subregion by `OPEN_MIN_GAIN` (0.01) of the mean or more. The
+  rounds stop at the target, at a round without such a gain, or at four basins.
 * The bundled example is one basin and gives the same loads as 1.0.4.
 
 New: `flowtopo.partition.OPEN_MIN_GAIN`.

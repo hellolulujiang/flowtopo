@@ -589,10 +589,20 @@ def test_basins_are_opened_when_whole_basins_are_unequal():
     assert load.max() / load.mean() <= 1.05
 
 
-def test_subbasin_level_tries_the_heaviest_basins_of_the_heaviest_and_lightest_subregions(monkeypatch):
+def _in_or_beside(cells, region):
+    """Whether the 2-D mask ``cells`` lies in ``region`` or shares a side with it."""
+    grown = cells.copy()
+    grown[1:, :] |= cells[:-1, :]
+    grown[:-1, :] |= cells[1:, :]
+    grown[:, 1:] |= cells[:, :-1]
+    grown[:, :-1] |= cells[:, 1:]
+    return bool(np.any(grown & region))
+
+
+def test_subbasin_level_tries_basins_in_or_beside_the_heaviest_and_lightest_subregions(monkeypatch):
     topo = rivers(21, [11] * 5)
     part_1, load_1 = topo.partition(4, "basin")
-    ends = {int(np.argmax(load_1)), int(np.argmin(load_1))}
+    ends = np.isin(part_1, [int(np.argmax(load_1)), int(np.argmin(load_1))]).reshape(topo.shape)
     labels = np.unique(topo.basins[topo.mask & (topo.basins > 0)])
     tried = []
     original = partition._open_basins
@@ -604,13 +614,13 @@ def test_subbasin_level_tries_the_heaviest_basins_of_the_heaviest_and_lightest_s
     monkeypatch.setattr(partition, "_open_basins", recording)
     topo.partition(4, "subbasin", min_subtree_size=1)
     first_round = [opened for opened in tried if opened.size == 1]
-    assert 1 <= len(first_round) <= 2
+    assert 1 <= len(first_round) <= 4
     assert len({int(opened[0]) for opened in first_round}) == len(first_round)
     for opened in first_round:
-        cells = topo.basins == labels[opened[0]]
-        assert np.unique(part_1[cells]).size == 1 and int(part_1[cells][0]) in ends
+        cells = (topo.basins == labels[opened[0]]).reshape(topo.shape)
+        assert _in_or_beside(cells, ends)
     for size in {opened.size for opened in tried}:
-        assert sum(opened.size == size for opened in tried) <= 2
+        assert sum(opened.size == size for opened in tried) <= 4
 
 
 def test_subbasin_level_opens_no_basin_without_a_clear_gain(monkeypatch):

@@ -178,10 +178,13 @@ When whole basins are not within `imbalance_target` of an equal share, basins
 are opened along their mainstems, found by walking upstream from the outlet and
 taking the larger tributary at each confluence, into the tributary subtrees
 that drain into the mainstem -- as few as the balance needs. Each round tries
-two basins, each opened together with those kept so far: the heaviest whole
-basin of the heaviest subregion, which that subregion cannot shed, and that of
-the lightest, which it cannot grow around; the better is kept only when it
-lowers the heaviest subregion by `OPEN_MIN_GAIN` (0.01) of the mean or more.
+the whole basins that can hold the balance up, each opened together with those
+kept so far: the heaviest of the heaviest subregion, which cannot shed it, and
+the heaviest bordering it; the heaviest of the lightest subregion, which cannot
+grow around it, and the heaviest bordering it (as a basin that walls off a
+piece of land). A basin of the heaviest subregion heavier than an equal share
+is then the only one tried. The best is kept only when it lowers the heaviest
+subregion by `OPEN_MIN_GAIN` (0.01) of the mean or more.
 The rounds stop at the target, at a round without such a gain, or at four
 basins. So the first basin opened is the dominant one, and a further one only a
 basin that holds the balance up. A tributary is never opened further. Each mainstem cell weighs with the

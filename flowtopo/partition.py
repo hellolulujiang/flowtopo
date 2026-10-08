@@ -16,7 +16,7 @@ balance second: every subregion is one piece of land.
     When the whole basins are not within ``imbalance_target`` of an equal
     share, basins are opened along their mainstems into the tributary
     subtrees that drain into the mainstem -- as few as the balance needs: the
-    dominant basin first; another only when it is the heaviest whole basin of
+    dominant basin first; another only when it is a whole basin in or beside
     the heaviest or the lightest subregion and opening it lowers the heaviest
     subregion by ``OPEN_MIN_GAIN`` of the mean or more (one layer only: a
     tributary is never opened further).  The tributaries and the other basins form one
@@ -1698,6 +1698,28 @@ def _open_basins(
     return part, load
 
 
+def _heaviest_bordering(
+    parts, label, part, n_parts, eligible, weights
+):
+    """The heaviest ``eligible`` basin bordering ``part`` from another of the
+    ``n_parts`` subregions: across a pair of side neighbours of the 2-D ``parts``,
+    whose basin number is ``label`` (-1 outside a basin).  -1 when none."""
+    far = []
+    for a, b, la, lb in (
+        (parts[:, :-1], parts[:, 1:], label[:, :-1], label[:, 1:]),
+        (parts[:-1, :], parts[1:, :], label[:-1, :], label[1:, :]),
+    ):
+        pair = (a >= 0) & (a < n_parts) & (b >= 0) & (b < n_parts) & (a != b)
+        far.append(lb[pair & (a == part)])
+        far.append(la[pair & (b == part)])
+    found = np.unique(np.concatenate(far))
+    found = found[found >= 0]
+    found = found[eligible[found]]
+    if found.size == 0:
+        return -1
+    return int(found[np.lexsort((found, -weights[found]))][0])
+
+
 def _open_rivers(
     topo, part, load, labels, basin_node_parts, n_parts, min_subtree_size,
     imbalance_target, seed, refine,
@@ -1705,16 +1727,19 @@ def _open_rivers(
     """Method 2: open as few basins along their mainstems as the balance needs.
 
     Method 1's subregions stand when they are within ``imbalance_target``.
-    Otherwise, round by round, two basins are tried, each opened together with
-    those kept so far: the heaviest whole basin of the heaviest subregion
-    (which cannot shed it) and that of the lightest subregion (which cannot
-    grow around it); the better is kept only when it lowers the heaviest
-    subregion by ``OPEN_MIN_GAIN`` of the mean or more.  The rounds stop at the
-    target, at a round without such a gain, or at ``MAX_OPENED_BASINS``.  So
-    the first basin opened is the dominant one, and a further one only a basin
-    that holds the balance up, and only when that clearly pays off.  A basin
-    that is one chain of cells has no tributaries to open into and stays
-    whole.
+    Otherwise, round by round, the whole basins that can hold the balance up are
+    tried, each opened together with those kept so far: the heaviest of the
+    heaviest subregion, which cannot shed it, and the heaviest bordering it; the
+    heaviest of the lightest subregion, which cannot grow around it, and the
+    heaviest bordering it (as a basin that walls off a piece of land).  A
+    basin of the heaviest subregion heavier than an equal share can never be
+    balanced whole and is then the only one tried.  The best is kept only when
+    it lowers the heaviest subregion by ``OPEN_MIN_GAIN`` of the mean or more; the
+    rounds stop at the target, at a round without such a gain, or at
+    ``MAX_OPENED_BASINS``.  So the first basin opened is the dominant one, and a
+    further one only a basin that holds the balance up, and only when that
+    clearly pays off.  A basin that is one chain of cells has no tributaries to
+    open into and stays whole.
     """
     best, best_ratio = (part, load), _ratio(load)
     if labels.size == 0 or best_ratio <= imbalance_target:
@@ -1726,6 +1751,9 @@ def _open_rivers(
     weights = np.bincount(label_of_cell, minlength=labels.size)
     # one cell of every basin: a whole basin is in one subregion, so it tells which
     first_cell = cells[np.unique(label_of_cell, return_index=True)[1]]
+    label_2d = np.full(idxs_ds.size, -1, dtype=np.int64)
+    label_2d[cells] = label_of_cell
+    label_2d = label_2d.reshape(topo.shape)
     seq_d2u = seq_dfs_from_pit(idxs_ds)
     # cells are counted in float64, exact to 2**53 (float32 stops at 2**24)
     upstream = upstream_area(
@@ -1742,11 +1770,28 @@ def _open_rivers(
         part_of_basin = best[0][first_cell]
         eligible = sources > 1
         eligible[opened] = False
-        candidates = []
-        for subregion in (int(np.argmax(best[1])), int(np.argmin(best[1]))):
+        heaviest, lightest = int(np.argmax(best[1])), int(np.argmin(best[1]))
+        share = float(best[1].sum()) / n_parts
+
+        def heaviest_in(subregion):
             pool = by_weight[eligible[by_weight] & (part_of_basin[by_weight] == subregion)]
-            if pool.size and int(pool[0]) not in candidates:
-                candidates.append(int(pool[0]))
+            return int(pool[0]) if pool.size else -1
+
+        inside = heaviest_in(heaviest)
+        if inside >= 0 and weights[inside] > share * imbalance_target:
+            found = [inside]
+        else:
+            parts_2d = best[0].reshape(topo.shape)
+            found = [
+                inside,
+                _heaviest_bordering(parts_2d, label_2d, heaviest, n_parts, eligible, weights),
+                heaviest_in(lightest),
+                _heaviest_bordering(parts_2d, label_2d, lightest, n_parts, eligible, weights),
+            ]
+        candidates = []
+        for basin in found:
+            if basin >= 0 and basin not in candidates:
+                candidates.append(basin)
         if not candidates:
             break
         round_best = None
