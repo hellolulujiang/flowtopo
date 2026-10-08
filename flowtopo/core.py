@@ -598,7 +598,7 @@ def seq_dfs_from_pit(idxs_ds, upa=None):
     if upa is None:
         seq, n = _seq_dfs(idxs_ds)
     else:
-        upa = np.ascontiguousarray(upa, dtype=np.float32)
+        upa = np.ascontiguousarray(upa, dtype=np.float32).reshape(-1)
         if upa.size != idxs_ds.size:
             raise ValueError("upa does not match the grid")
         # every cell of the network needs a finite, positive area, as

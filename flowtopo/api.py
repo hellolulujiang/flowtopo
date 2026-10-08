@@ -30,6 +30,28 @@ ORDERINGS = ("dfs", "bfs", "topo")
 LAYERINGS = ("asap", "cfds", "alap")
 
 
+def _checked_shape(shape):
+    """Two whole, nonnegative dimensions; a fractional size must not be truncated."""
+    try:
+        dimensions = tuple(shape)
+    except TypeError as error:
+        raise ValueError("shape must be two nonnegative integer dimensions") from error
+    if len(dimensions) != 2:
+        raise ValueError("shape must be two nonnegative integer dimensions")
+    result = []
+    for value in dimensions:
+        if not np.isscalar(value) or isinstance(value, (bool, np.bool_)):
+            raise ValueError("shape must be two nonnegative integer dimensions")
+        try:
+            whole = int(value)
+        except (TypeError, ValueError, OverflowError) as error:
+            raise ValueError("shape must be two nonnegative integer dimensions") from error
+        if whole != value or whole < 0:
+            raise ValueError("shape must be two nonnegative integer dimensions")
+        result.append(whole)
+    return tuple(result)
+
+
 class FlowTopo:
     """A D8 flow network and its topological representations.
 
@@ -55,7 +77,7 @@ class FlowTopo:
 
     def __init__(self, idxs_ds, shape, transform=None, latlon=True, mask=None, crs=None,
                  earth="sphere"):
-        self.shape = tuple(int(v) for v in shape)
+        self.shape = _checked_shape(shape)
         self.nrow, self.ncol = self.shape
         size = self.nrow * self.ncol
         given = np.ascontiguousarray(idxs_ds)
@@ -83,15 +105,14 @@ class FlowTopo:
                              f"to {size - 1}")
         self.idxs_ds = _frozen(np.ascontiguousarray(as_int64, dtype=np.int32))
         self.transform = tuple(transform) if transform is not None else None
-        # a rotated grid is refused here too, not only when read from a file: the lengths and areas take
-        # the pixel sides from terms 1 and 5 alone
-        if self.transform is not None and (self.transform[2] != 0 or self.transform[4] != 0):
-            raise ValueError("a rotated grid (terms 2 and 4 of the transform not 0) is not supported")
         # six finite terms and pixel sides that are not 0; a width of 0 gave every area and
         # every distance as 0 without a word
         if self.transform is not None:
             if len(self.transform) != 6 or not all(np.isfinite(float(term)) for term in self.transform):
                 raise ValueError("the transform must be six finite numbers (x0, pixel width, 0, y0, 0, pixel height)")
+            # Validate the length before indexing. Lengths and areas use only the pixel sides.
+            if self.transform[2] != 0 or self.transform[4] != 0:
+                raise ValueError("a rotated grid (terms 2 and 4 of the transform not 0) is not supported")
             if self.transform[1] == 0 or self.transform[5] == 0:
                 raise ValueError("the pixel width and height of the transform (terms 1 and 5) must not be 0")
         self.latlon = bool(latlon)
@@ -109,7 +130,7 @@ class FlowTopo:
             # cell inside it whose receiver is outside becomes a pit.  The orderings, the basins, the partition and
             # the layerings were built on the whole idxs_ds while the kernels honoured the mask, so a cell outside it
             # was numbered, labelled a basin and put on a mainstem
-            mask_array = np.ascontiguousarray(mask, dtype=bool)
+            mask_array = np.ascontiguousarray(mask, dtype=bool).reshape(-1)
             if mask_array.size != size:
                 raise ValueError("mask does not match shape")
             cut = np.array(self.idxs_ds, dtype=np.int32)
@@ -142,6 +163,7 @@ class FlowTopo:
             d8 = d8.ravel()
         elif shape is None:
             raise ValueError("a flat d8 array needs shape=(nrow, ncol)")
+        shape = _checked_shape(shape)
         nrow, ncol = shape
         # the size is refused before the downstream pointers are built: the builder allocates an
         # int32 array of the whole grid first, so a grid past int32 would fail there or wrap round
@@ -401,7 +423,7 @@ class FlowTopo:
         # outside it still counted as a tributary.
         cells = np.asarray(self.mask, dtype=bool)
         if channel_mask is not None:
-            cells = cells & np.asarray(channel_mask, dtype=bool)
+            cells = cells & core._checked_cells("channel_mask", channel_mask, self.idxs_ds.size, bool)
         us_table = n_up = None
         if manner == "pull":
             us_table, n_up = core.upstream_table(
@@ -413,7 +435,8 @@ class FlowTopo:
 
     def channel_mask(self, upa, threshold_km2=10.0):
         """Cells whose drainage area reaches ``threshold_km2``."""
-        return self.mask & (np.asarray(upa) >= np.float32(threshold_km2))
+        values = core._checked_cells("upa", upa, self.idxs_ds.size, np.asarray(upa).dtype)
+        return self.mask & (values >= np.float32(threshold_km2))
 
     # -- partitions --------------------------------------------------------
 
