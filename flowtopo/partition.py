@@ -17,8 +17,8 @@ balance second: every subregion is one piece of land.
     share, basins are opened along their mainstems into the tributary
     subtrees that drain into the mainstem -- as few as the balance needs: the
     dominant basin first; another only when it is a whole basin in or beside
-    the heaviest or the lightest subregion and opening it lowers the heaviest
-    subregion by ``OPEN_MIN_GAIN`` of the mean or more (one layer only: a
+    a subregion over the target or the lightest subregion and opening it
+    lowers the overload of the subregions by ``OPEN_MIN_GAIN`` or more (one layer only: a
     tributary is never opened further).  The tributaries and the other basins form one
     graph, divided at once; each mainstem cell weighs with the tributary that
     enters it.  Below ``P_min``, the most upstream mainstem cell where a
@@ -1698,6 +1698,14 @@ def _open_basins(
     return part, load
 
 
+def _overload(loads):
+    """How much the subregions heavier than the mean exceed it, in means
+    (max/mean - 1 when one subregion is heavy).  It drops also when one of two
+    equally heavy subregions gets lighter, which max/mean does not show."""
+    mean = max(float(loads.mean()), 1.0)
+    return float(np.maximum(loads / mean - 1.0, 0.0).sum())
+
+
 def _heaviest_bordering(
     parts, label, part, n_parts, eligible, weights
 ):
@@ -1728,14 +1736,17 @@ def _open_rivers(
 
     Method 1's subregions stand when they are within ``imbalance_target``.
     Otherwise, round by round, the whole basins that can hold the balance up are
-    tried, each opened together with those kept so far: the heaviest of the
-    heaviest subregion, which cannot shed it, and the heaviest bordering it; the
-    heaviest of the lightest subregion, which cannot grow around it, and the
-    heaviest bordering it (as a basin that walls off a piece of land).  A
-    basin of the heaviest subregion heavier than an equal share can never be
-    balanced whole and is then the only one tried.  The best is kept only when
-    it lowers the heaviest subregion by ``OPEN_MIN_GAIN`` of the mean or more; the
-    rounds stop at the target, at a round without such a gain, or at
+    tried, each opened together with those kept so far: in every subregion over the
+    target, the heaviest, which it cannot shed, and the heaviest bordering it;
+    in the lightest subregion, the heaviest, which it cannot grow around, and the
+    heaviest bordering it (as a basin that walls off a piece of land).  A basin
+    heavier than an equal share in a subregion over the target can never be
+    balanced whole, and the heaviest such is then the only one tried.  The best
+    leaves the least overload (``_overload``: how much the subregions over the mean
+    exceed it), and it is kept only when it lowers the overload by
+    ``OPEN_MIN_GAIN`` or more -- the overload, not max/mean, so that a basin
+    that lightens one of two equally heavy subregions counts.  The rounds stop at
+    the target, at a round without such a gain, or at
     ``MAX_OPENED_BASINS``.  So the first basin opened is the dominant one, and a
     further one only a basin that holds the balance up, and only when that
     clearly pays off.  A basin that is one chain of cells has no tributaries to
@@ -1770,24 +1781,26 @@ def _open_rivers(
         part_of_basin = best[0][first_cell]
         eligible = sources > 1
         eligible[opened] = False
-        heaviest, lightest = int(np.argmax(best[1])), int(np.argmin(best[1]))
-        share = float(best[1].sum()) / n_parts
+        loads = best[1]
+        share = float(loads.sum()) / loads.size
+        over = [int(k) for k in np.argsort(-loads, kind="stable") if loads[k] > share * imbalance_target]
+        ends = over + [k for k in [int(np.argmin(loads))] if k not in over]
 
         def heaviest_in(subregion):
             pool = by_weight[eligible[by_weight] & (part_of_basin[by_weight] == subregion)]
             return int(pool[0]) if pool.size else -1
 
-        inside = heaviest_in(heaviest)
-        if inside >= 0 and weights[inside] > share * imbalance_target:
-            found = [inside]
+        forced = [b for b in (heaviest_in(k) for k in over) if b >= 0 and weights[b] > share * imbalance_target]
+        if forced:
+            found = [max(forced, key=lambda b: (weights[b], -b))]
         else:
             parts_2d = best[0].reshape(topo.shape)
-            found = [
-                inside,
-                _heaviest_bordering(parts_2d, label_2d, heaviest, n_parts, eligible, weights),
-                heaviest_in(lightest),
-                _heaviest_bordering(parts_2d, label_2d, lightest, n_parts, eligible, weights),
-            ]
+            found = []
+            for k in ends:
+                found += [
+                    heaviest_in(k),
+                    _heaviest_bordering(parts_2d, label_2d, k, n_parts, eligible, weights),
+                ]
         candidates = []
         for basin in found:
             if basin >= 0 and basin not in candidates:
@@ -1802,10 +1815,13 @@ def _open_rivers(
                 imbalance_target, seed, refine,
             )
             ratio = _ratio(trial[1])
-            if round_best is None or ratio < round_best[2] - 1e-12:
-                round_best = (int(candidate), trial, ratio)
-        candidate, trial, ratio = round_best
-        if ratio > best_ratio - OPEN_MIN_GAIN:
+            key = (_overload(trial[1]), ratio)
+            if round_best is None or key[0] < round_best[3][0] - 1e-12 or (
+                key[0] <= round_best[3][0] + 1e-12 and ratio < round_best[2] - 1e-12
+            ):
+                round_best = (int(candidate), trial, ratio, key)
+        candidate, trial, ratio, key = round_best
+        if key[0] > _overload(best[1]) - OPEN_MIN_GAIN:
             break
         opened.append(candidate)
         best, best_ratio = trial, ratio
