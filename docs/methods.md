@@ -10,7 +10,7 @@ Notation:
 | `L` | longest downstream path, in hops |
 | `P` | threads |
 | `K` | largest donor count of any cell; at most 8 for D8 |
-| `B` | number of basins |
+| `B` | number of basins (the largest basin id when the ids are not 1 .. B) |
 
 ## Rank
 
@@ -44,8 +44,7 @@ Which donor of a confluence is taken first is a choice, and there are two:
 * by upstream drainage area, largest first (`seq_dfs_from_pit(idxs_ds, upa)`,
   or `topo.ordering("dfs", upa=upa)`), which puts the main stem straight after
   the outlet and gives it consecutive positions. **This is the order of the
-  released MERIT-FlowTopo `seq_dfs` layer**, which the C builds with
-  `dfs_traversal_order_sorted`; a sequence taken from the released raster and
+  released MERIT-FlowTopo `seq_dfs` layer**, as the C code builds it; a sequence taken from the released raster and
   one taken from the default here are different sequences, even though both are
   topological orders of the same network.
 
@@ -93,11 +92,13 @@ list, so it is the lightest of the three in memory.
 
 ### `parallel.seq_bfs_from_pit` — breadth-first with threads, `d2u`
 
-The same sequence as the serial breadth-first form, built by counting,
-prefix-summing and writing each frontier across threads.
+The same sequence as the serial breadth-first form: each frontier's donors
+are counted and written across threads, between them a prefix sum over the
+frontier's cells.
 
-*Complexity:* O(N/P + L) time over L frontiers, plus the prefix sum each
-frontier costs, which is a scan over the P thread totals. O(N + E) space.
+*Complexity:* the donor lists are built serially, O(N); the counting and the
+writing are O(N/P + L) over L frontiers, and the prefix sums, serial, O(N) in
+all. O(N + E) space.
 Needs numba.
 
 ## Layerings
@@ -127,8 +128,9 @@ layer. No two cells of a layer then write into the same receiver.
 That is what lets a threaded push run with no atomic and stay deterministic.
 It is also the only one of the three under which Strahler stream order can run
 under push at all. The confluence rule there is a comparison and a count, not
-one addition, so no single atomic operation applies. Costs at most a few layers over the plain
-form.
+one addition, so no single atomic operation applies. It can take more layers than the plain
+form: a held-back cell can hold back the next, confluence after confluence (on
+the example basin it adds none).
 
 *Complexity:* O(N + E) time, O(N) space.
 
@@ -145,13 +147,13 @@ differently, which changes the memory-access pattern.
 
 Each returns a subregion index per cell, `-1` outside the network. Both cut
 along the drainage hierarchy, so no value crosses a subregion boundary while a
-kernel runs, and both put contiguity first and balance second: within a land
-mass a subregion is one piece, the two banks of a held-back mainstem counting
-as touching.
+kernel runs, and both put contiguity first and balance second: on its land a
+subregion is one piece, the two banks of a held-back mainstem counting as
+touching, and the islands are added to the subregions of nearby land.
 
 The units, whole basins or tributary subtrees, are the nodes of a graph whose
 edges are their shared raster boundaries, weighted by the length of the
-boundary. Land is the largest components of that graph, at most one per
+boundary; a basin of a single cell takes no part. Land is the largest components of that graph, at most one per
 subregion: those of at least half an equal share, and the next largest too
 when these have too few units to be cut into every subregion. Every other
 component is an island and goes with its nearest land, so two components
@@ -159,11 +161,13 @@ share a subregion only when there are more of them than land can hold; when
 no component is that large (an archipelago), METIS divides the components,
 each linked to its nearest. The land
 masses get the subregions so that the heaviest is as light as can be; and each mass is cut by contiguous
-weighted METIS (`pymetis`, best of four seeds). A unit heavier than an equal
+weighted METIS (best of four seeds: pymetis's METIS 5.1.0, or METIS 5.2.1, the
+C programs' version, through `FLOWTOPO_METIS_LIBRARY`). A unit heavier than an equal
 share of its mass is a subregion of its own first, together with the small
 units it cuts off. Boundary units then move from heavier to lighter
 neighbouring subregions until the heaviest is within `imbalance_target`
-(default 1.005) of an equal share or no move helps; a unit whose departure
+(default 1.005) of an equal share, no move helps, or ten moves a node have been
+made; a unit whose departure
 would cut its subregion in two takes the cut-off piece with it, or does not
 move, and an island moves whole, to a subregion near it.
 
@@ -197,13 +201,17 @@ a further one only a basin that holds the balance up. A tributary is never
 opened further. Each mainstem cell weighs with the
 tributary that enters it. Above `P_min`, the most upstream mainstem cell where
 a tributary of another subregion enters, the mainstem stays with the
-subregion of its most upstream tributaries (its trunk); below `P_min` it
-depends on several subregions and is held back to a second stage, marked
-`flowtopo.MAINSTEM`.
+subregion of its most upstream tributaries (its trunk); from `P_min` down,
+`P_min` included, it depends on several subregions and is held back to a second
+stage, marked `flowtopo.MAINSTEM`. The mainstem takes at each confluence the
+tributary with the most cells upstream (on a tie the larger upstream area, then
+the smaller cell index).
 
-*Complexity:* building the graph is O(N); the partition works on the graph,
-whose nodes are basins and tributary subtrees, far fewer than the N cells:
-METIS is near-linear in its size, and each balance sweep is linear in it.
+*Complexity:* the scan of the raster for the graph is O(N), and its boundary
+pairs are sorted to merge them; the partition works on the graph, whose nodes
+are basins and tributary subtrees, far fewer than the N cells: METIS is
+near-linear in its size, and a balance sweep sorts its candidates and runs a
+bounded connectivity search for each move it tries.
 
 ## Kernels
 
@@ -259,7 +267,11 @@ conflict-free push is the one that runs it in a single pass with no atomic.
 
 The flattening of the D8 raster into one downstream pointer per cell. 247 is
 nodata; a second nodata code can be given for a grid that uses another. A cell
-draining off the grid, into nodata, or nowhere becomes a pit.
+draining off the grid, into nodata, or nowhere becomes a pit. The columns do
+not wrap: on a grid that spans every longitude, a cell draining across its
+east or west edge becomes a pit as well, and the basin is cut there. Give such
+a network on a window in which it lies whole (the C code works on regions for
+the same reason, and refuses a region out of which a cell drains).
 
 *Origin:* [pyflwdir](https://github.com/Deltares/pyflwdir) (Eilander et al.,
 2021, Deltares).
@@ -282,8 +294,10 @@ costs `N × K` entries, K being the largest fan-in, at most 8 for D8.
 
 ### `core.basin_labels`
 
-One-based basin id per cell, from a `d2u` pass: a pit opens a basin and every
-other cell copies its receiver's label. Required by the as-late-as-possible
+One-based basin label per cell, from a `d2u` pass: a pit opens a basin and every
+other cell copies its receiver's label. The labels number the pits in the order
+the pass meets them, for the network given: they are not FlowDivide's
+`global_basin_id` or `local_basin_id`. Required by the as-late-as-possible
 layering and by both partitions.
 
 *Complexity:* O(N) time, O(N) space.
@@ -306,12 +320,11 @@ Cell-to-cell distance is planar, not geodesic: metres per degree are evaluated
 once and combined with Pythagoras, rather than solving the inverse geodesic
 problem. Over one 90 m cell the two agree far below the resolution of the data.
 
-The latitude at which they are evaluated is the midpoint of the two row edges
-rather than of the two cell centres, so it sits half a pixel north of the
-true midpoint. This matches the C implementation that produced the released
-products, and the two are kept identical deliberately. On the bundled basin it
-costs 0.16 m over a 98 km path, 1.7e-6 relative; on a one-degree grid at 60 N
-it approaches a percent.
+The latitude at which they are evaluated is the one between the two cell
+centres. Until 1.0.5 it was the midpoint of the two row edges, half a pixel
+towards the first row, as the C code also took it until then: on the bundled basin
+0.16 m in 82.7 km of the distance to the outlet and 0.15 m in 98 km of the longest
+upstream path, and near a percent on a one-degree grid at 60 N. The C code and this package changed together.
 
 ### `raster`
 
@@ -355,8 +368,15 @@ rate per level. `parallel_locality` reports, for one layering: intra-layer
 span, gap statistics, cache-line footprint, receiver distance, and the miss
 rate on the flattened layer order, so the two are directly comparable.
 
+The medians are the upper of the two middle values and the percentiles the
+value at the rounded rank, as in the C code whose numbers the paper reports;
+the receiver distance is taken over the cells that have a receiver (a pit has
+none).
+
 The reuse interval is the number of accesses between two touches of the same
-cache line. It is not the reuse distance of the cache literature, which counts
+cache line, found through a table of 2^20 lines: exact up to 16.7 million
+four-byte cells, and beyond that a line whose slot another line took in
+between counts as new, as in the C code. It is not the reuse distance of the cache literature, which counts
 the distinct lines touched in between and is the LRU stack distance.
 
 The simulator is checked against an LRU written independently: the two agree

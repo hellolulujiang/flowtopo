@@ -115,7 +115,7 @@ if __name__ == "__main__":
 
         print(f"numba threads available: {config.NUMBA_NUM_THREADS}")
     except ImportError:
-        print("numba not installed: the threaded forms fall back to one thread")
+        sys.exit("numba is not installed: the threaded forms need it (pip install flowtopo[speed])")
 
     for argument in [int(a) for a in sys.argv[1:]] or [1000, 2000, 4000]:
         run(argument)

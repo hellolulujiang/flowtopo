@@ -2,7 +2,9 @@
 
 Both levels cut along the drainage hierarchy, so no value has to cross a
 subregion boundary while a kernel runs, and both put contiguity first and
-balance second: every subregion is one piece of land.
+balance second: on its land every subregion is one piece (the two banks of an
+opened mainstem touch across it), and the islands are added to the subregions
+of nearby land.
 
 ``basin``
     Every basin stays whole.  The basins are the nodes of a graph whose edges
@@ -15,17 +17,20 @@ balance second: every subregion is one piece of land.
 ``subbasin``
     When the whole basins are not within ``imbalance_target`` of an equal
     share, basins are opened along their mainstems into the tributary
-    subtrees that drain into the mainstem -- as few as the balance needs: the
-    dominant basin first; another only when it is a whole basin in or beside
+    subtrees that drain into the mainstem -- as few as the balance needs:
+    usually the dominant basin first (an eligible basin -- more than one
+    headwater -- heavier than an equal share times the target is tried first,
+    and kept open only when that improves the balance); another only when it is a whole basin in or beside
     a subregion over the target or the lightest subregion and opening it
     lowers max/mean (or, max/mean as it is, the overload) by
     ``OPEN_MIN_GAIN`` or more (one layer only: a
     tributary is never opened further).  The tributaries and the other basins form one
     graph, divided at once; each mainstem cell weighs with the tributary that
-    enters it.  Below ``P_min``, the most upstream mainstem cell where a
-    tributary of another subregion enters, each opened mainstem is held back
-    to a second stage, marked :data:`MAINSTEM`; above it, the mainstem stays
-    with the subregion of its most upstream tributaries (its trunk).
+    enters it.  From ``P_min`` down, ``P_min`` included -- the most upstream
+    mainstem cell where a tributary of another subregion enters -- each opened
+    mainstem is held back to a second stage, marked :data:`MAINSTEM`; above it,
+    the mainstem stays with the subregion of its most upstream tributaries (its
+    trunk).
 
 Land is the largest components of the graph -- what touches on the ground, the
 two banks of an opened mainstem joined -- at most one per subregion: those of
@@ -35,14 +40,22 @@ nearest land, a land mass.  The masses get the subregions so that the heaviest
 is as light as can be, and no subregion spans two masses; when no component is
 land (an archipelago), METIS divides the components.  A mass is cut by
 contiguous weighted METIS, run from several seeds on a graph whose small
-tributaries are grouped with a larger neighbour; the most balanced result is
-kept, and boundary nodes then move, one tributary or basin at a time, from
+tributaries are grouped with a larger neighbour; of the results whose heaviest
+subregion is within ``METIS_SLACK`` of its share the one with the shortest
+boundary is kept, otherwise the most balanced, and boundary nodes then move, one tributary or basin at a time, from
 heavier to lighter neighbouring subregions until every one is within
 ``imbalance_target`` of its share or no move helps.  An island moves whole, to
 a subregion near it.  A subregion is never cut in two; the odd piece left apart
 from its subregion joins the one around it.
+
+A basin of a single cell (a pit that nothing flows into, mostly on a coast)
+takes no part, as in the C code: its cell keeps ``-1`` and adds to no load.
+METIS is pymetis's unless ``FLOWTOPO_METIS_LIBRARY`` names a METIS shared
+library (:data:`METIS_LIBRARY_VARIABLE`).
 """
 
+import ctypes
+import os
 from dataclasses import dataclass
 from heapq import heappop, heappush
 from itertools import permutations
@@ -54,7 +67,7 @@ from .core import seq_dfs_from_pit
 from .kernels import upstream_area
 
 MAINSTEM = -2
-"""Marker for the mainstem cells held back to the second stage (below ``P_min``)."""
+"""Marker for the mainstem cells held back to the second stage (``P_min`` and every mainstem cell below it)."""
 
 METIS_SEEDS = 4
 """METIS runs from this many seeds; see ``_metis_parts`` for the one kept."""
@@ -67,8 +80,9 @@ MAX_OPENED_BASINS = 4
 """Method 2 opens at most this many basins along their mainstems."""
 
 OPEN_MIN_GAIN = 0.01
-"""Method 2 keeps an opened basin only when it lowers the heaviest subregion
-by this much of the mean (max/mean) or more."""
+"""Method 2 keeps an opened basin when it lowers the heaviest subregion by this
+much of the mean (max/mean) or more, or when the heaviest is no heavier and the
+load above the shares is lower (one of two equal bottlenecks opened)."""
 
 OPEN_TRIALS = 4
 """Of the candidates of a round, Method 2 tries at most this many, the heaviest
@@ -84,15 +98,36 @@ ISLAND_PROBES = 16
 
 METIS_GROUPS_PER_PART = 8
 """Method 2 groups small tributaries for METIS, but keeps at least this many
-groups per part, whatever ``min_subtree_size``."""
+groups times the number of parts in all, whatever ``min_subtree_size`` (every
+tributary a group of its own where there are fewer tributaries than that); a
+part is not promised this many of its own."""
 
 P_MIN_ROUNDS = 4
 """Method 2 balances again, with the trunk's mainstem above the new ``P_min``,
-at most this many times."""
+at most this many times.  Where the cut positions have not settled by then the
+last partition is returned; its loads are counted on the raster afterwards."""
 
 FRAGMENT_SHARE = 0.01
 """A piece of a part cut off from its main piece and lighter than this share of
 an equal part joins the neighbouring part it touches the most."""
+
+METIS_LIBRARY_VARIABLE = "FLOWTOPO_METIS_LIBRARY"
+"""The environment variable that names a METIS shared library to call (through
+ctypes) instead of the METIS that pymetis carries.  pymetis 2025.2.2 carries
+METIS 5.1.0, which divides the same graph with the same seed and options
+otherwise than METIS 5.2.1, the version the C code links (its build script,
+``build_metis_5.2.1.sh``, makes ``libmetis.dylib`` from the same objects);
+a 5.1 build (conda's 5.1.1) has also stopped on a MERIT Hydro region with a
+fault in its coarsening that 5.2.1 corrects.  The library must be built with
+32-bit integers and 32-bit reals, as that build is: the integer width is
+checked when it is loaded, the real width cannot be."""
+
+_METIS_NOPTIONS = 40
+_METIS_OPTION_SEED = 9
+_METIS_OPTION_CONTIG = 13
+_METIS_OPTION_UFACTOR = 18
+_METIS_OK = 1
+_metis_libraries = {}
 
 
 @dataclass
@@ -123,6 +158,56 @@ def _require_pymetis():
             "The partition requires pymetis: pip install pymetis"
         ) from error
     return pymetis
+
+
+def _metis_library():
+    """The METIS shared library ``METIS_LIBRARY_VARIABLE`` names, loaded once, or None."""
+    path = os.environ.get(METIS_LIBRARY_VARIABLE, "")
+    if not path:
+        return None
+    if path not in _metis_libraries:
+        library = ctypes.CDLL(path)
+        # METIS_SetDefaultOptions writes METIS_NOPTIONS values of -1: read as 64-bit integers, a build with 32-bit
+        # integers leaves the second half of the buffer at 0
+        probe = np.zeros(_METIS_NOPTIONS, dtype=np.int64)
+        library.METIS_SetDefaultOptions(probe.ctypes.data_as(ctypes.c_void_p))
+        if probe[-1] != 0:
+            raise RuntimeError(
+                f"{path} is a METIS built with 64-bit integers; {METIS_LIBRARY_VARIABLE} needs one built with "
+                "32-bit integers and reals"
+            )
+        library.METIS_PartGraphKway.restype = ctypes.c_int
+        _metis_libraries[path] = library
+    return _metis_libraries[path]
+
+
+def _metis_through_library(library, xadj, adjncy, vweights, eweights, n_parts, targets, seed, ufactor, contig):
+    """One METIS_PartGraphKway of the library, with the arguments and options the C code gives it."""
+    n = int(xadj.size - 1)
+    if n_parts == 1:
+        return np.zeros(n, dtype=np.int32), 0          # as the C code: one part needs no METIS
+    arrays = [np.ascontiguousarray(a, dtype=np.int32) for a in (xadj, adjncy, vweights, eweights)]
+    for original, narrowed in zip((xadj, adjncy, vweights, eweights), arrays):
+        if not np.array_equal(np.asarray(original, dtype=np.int64), narrowed):
+            raise ValueError("the graph does not fit the 32-bit integers of the METIS library")
+    xadj32, adjncy32, vweights32, eweights32 = arrays
+    options = np.zeros(_METIS_NOPTIONS, dtype=np.int32)
+    library.METIS_SetDefaultOptions(options.ctypes.data_as(ctypes.c_void_p))
+    options[_METIS_OPTION_SEED] = seed
+    options[_METIS_OPTION_UFACTOR] = ufactor
+    options[_METIS_OPTION_CONTIG] = 1 if contig else 0
+    target_weights = np.ascontiguousarray(targets, dtype=np.float32)
+    part = np.zeros(max(n, 1), dtype=np.int32)
+    nvtxs, ncon, nparts, objval = ctypes.c_int32(n), ctypes.c_int32(1), ctypes.c_int32(n_parts), ctypes.c_int32(0)
+    pointer = lambda a: a.ctypes.data_as(ctypes.c_void_p)  # noqa: E731
+    status = library.METIS_PartGraphKway(
+        ctypes.byref(nvtxs), ctypes.byref(ncon), pointer(xadj32), pointer(adjncy32), pointer(vweights32), None,
+        pointer(eweights32), ctypes.byref(nparts), pointer(target_weights), None, pointer(options),
+        ctypes.byref(objval), pointer(part),
+    )
+    if status != _METIS_OK:
+        raise RuntimeError(f"METIS_PartGraphKway of {os.environ.get(METIS_LIBRARY_VARIABLE)} returned {status}")
+    return part[:n], int(objval.value)
 
 
 # ---------------------------------------------------------------------------
@@ -233,8 +318,14 @@ def _metis(
     ufactor: int,
     contig: bool = True,
 ) -> np.ndarray:
-    pymetis = _require_pymetis()
     xadj, adjncy, eweights = _csr(graph.size, graph.edges, graph.edge_weights)
+    library = _metis_library()
+    if library is not None:
+        return _metis_through_library(
+            library, xadj, adjncy, _scaled(graph.weights), _scaled(eweights), n_parts, targets, seed, ufactor,
+            contig,
+        )
+    pymetis = _require_pymetis()
     options = pymetis.Options(seed=seed, ufactor=ufactor, contig=int(contig))
     result = pymetis.part_graph(
         n_parts,
@@ -421,8 +512,8 @@ def _refine_balance(
     peninsula with it (``_detach``), so that both parts stay connected; a move
     that would cut the part's body in two is not made.  Load can so pass on
     through a middle part to a light one that does not touch the heavy one.  It
-    stops when the largest load-to-target ratio is at most ``goal``, or a sweep
-    makes no move.  Returns the number of moves.
+    stops when the largest load-to-target ratio is at most ``goal``, a sweep
+    makes no move, or ``max_moves`` moves are made.  Returns the number of moves.
     """
     n = weights.size
     n_parts = target_load.size
@@ -539,7 +630,8 @@ def _metis_parts(
 
     Of the results whose parts are within ``METIS_SLACK`` of their targets --
     near enough for the refinement -- the one with the shortest boundary between
-    the parts is kept; when there is none, the most balanced.  With ``contig``,
+    the parts is kept; when there is none, the most balanced.  Before both, the
+    results with fewer empty parts come first.  With ``contig``,
     ``graph`` must be connected (one land component, see
     ``_partition_components``): results with every part one piece come first,
     and the pieces METIS leaves apart (it may, with very unequal weights) join
@@ -549,7 +641,8 @@ def _metis_parts(
         return np.arange(graph.size, dtype=np.int32)
     total = float(graph.weights.sum())
     target_load = np.asarray(targets, dtype=np.float64) * total
-    ufactor = max(1, int(round((imbalance_target - 1.0) * 1000)))
+    # rounded half up, as the C code's lround: Python's round takes a half to the even number (62.5 -> 62)
+    ufactor = max(1, int(np.floor((imbalance_target - 1.0) * 1000 + 0.5)))
     best = None
     best_score = None
     for attempt in range(METIS_SEEDS):
@@ -581,8 +674,10 @@ def _pieces_apart(graph: PartitionGraph, parts: np.ndarray) -> int:
 def _fill_empty_parts(graph: PartitionGraph, parts: np.ndarray, n_parts: int) -> np.ndarray:
     """An empty part (METIS leaves one with very unequal weights) takes a node of
     the heaviest part that has two or more: the lightest leaf of a spanning tree
-    of that part, so that the part stays connected.  ``graph`` has more nodes
-    than ``n_parts``.
+    of that part, so that a part in one piece stays in one piece.  The tree
+    grows from the part's first node; where the part is in pieces, a node the
+    tree does not reach counts as a leaf, whatever its place in its own piece.
+    ``graph`` has more nodes than ``n_parts``.
     """
     from scipy.sparse import coo_matrix
     from scipy.sparse.csgraph import breadth_first_order
@@ -595,11 +690,16 @@ def _fill_empty_parts(graph: PartitionGraph, parts: np.ndarray, n_parts: int) ->
         donor = int(np.argmax(np.where(counts > 1, load, -np.inf)))
         members = np.flatnonzero(parts == donor)
         sub = _subgraph(graph, members)
+        # every edge both ways and a node's neighbours by rising index, so that the tree
+        # is the one the FlowTopo C code grows (left to SciPy, an edge stored (a, b) was
+        # followed from a before any edge stored (c, a), and another leaf could come out)
+        both = np.concatenate((sub.edges, sub.edges[:, ::-1]))
         matrix = coo_matrix(
-            (np.ones(sub.edges.shape[0]), (sub.edges[:, 0], sub.edges[:, 1])),
+            (np.ones(both.shape[0]), (both[:, 0], both[:, 1])),
             shape=(sub.size, sub.size),
         ).tocsr()
-        _, predecessors = breadth_first_order(matrix, 0, directed=False)
+        matrix.sort_indices()
+        _, predecessors = breadth_first_order(matrix, 0, directed=True)
         is_parent = np.zeros(sub.size, dtype=np.bool_)
         is_parent[predecessors[predecessors >= 0]] = True
         leaves = np.flatnonzero(~is_parent)
@@ -627,7 +727,6 @@ def _island_units(
     components, but such islands, and the ``ARCHIPELAGO_NEIGHBOURS`` such islands
     nearest to it.
     """
-    from scipy.spatial import cKDTree
 
     n = linked.size
     component = _components(linked)
@@ -665,8 +764,7 @@ def _island_units(
     points = np.column_stack((linked.rows, linked.cols))
     nodes = np.flatnonzero(on_island)
     k = min(ISLAND_PROBES + 1, n)
-    _, near = cKDTree(points).query(points[nodes], k=k)
-    near = near.reshape(nodes.size, k)
+    _, near = _nearest(points, points[nodes], k)
     other = component[near] != component[nodes][:, None]
     keep = (other & (np.cumsum(other, axis=1) <= ARCHIPELAGO_NEIGHBOURS)).ravel()
     found = [np.column_stack((np.repeat(nodes, k)[keep], near.ravel()[keep]))]
@@ -680,7 +778,7 @@ def _island_units(
         asking = np.flatnonzero(in_short)
         if rest.size:
             k = min(ARCHIPELAGO_NEIGHBOURS, rest.size)
-            _, near = cKDTree(points[rest]).query(points[asking], k=k)
+            _, near = _nearest(points[rest], points[asking], k)
             found.append(np.column_stack((np.repeat(asking, k), rest[near.ravel()])))
         dense = np.flatnonzero(short)
         if dense.size > 1:
@@ -691,8 +789,8 @@ def _island_units(
                 ]
             ) / component_weight[dense][:, None]
             k = min(ARCHIPELAGO_NEIGHBOURS + 1, dense.size)
-            _, near = cKDTree(centroids).query(centroids, k=k)
-            near = near.reshape(dense.size, k)[:, 1:]
+            _, near = _nearest(centroids, centroids, k)
+            near = near[:, 1:]
             links = np.column_stack(
                 (island_unit[np.repeat(dense, k - 1)], island_unit[dense[near.ravel()]])
             )
@@ -810,7 +908,11 @@ def _absorb_fragments(graph: PartitionGraph, parts: np.ndarray, limit: float) ->
     first, second = graph.edges[:, 0], graph.edges[:, 1]
     n_parts = int(parts.max()) + 1
     moved_nodes = 0
-    for _ in range(8):
+    # as many rounds as it takes: a fragment that touches only fragments waits for the next round.  (Until
+    # eight rounds at most: fragments more than eight deep were left apart, and the call returned as if
+    # they had joined.)  A round that moves a node joins at least one fragment to a piece that stays, so
+    # the pieces grow fewer and the rounds end; a round that moves nothing is the last.
+    while True:
         same = parts[first] == parts[second]
         piece = _components(graph, same)
         weight = np.bincount(piece, weights=graph.weights)
@@ -836,6 +938,8 @@ def _absorb_fragments(graph: PartitionGraph, parts: np.ndarray, limit: float) ->
         target = np.full(weight.size, -1, dtype=np.int64)
         target[absorbed] = np.argmax(shared[absorbed], axis=1)
         moving = target[piece] >= 0
+        if not moving.any():
+            break
         parts[moving] = target[piece[moving]]
         moved_nodes += int(np.count_nonzero(moving))
     return moved_nodes
@@ -918,8 +1022,8 @@ def _archipelago(
     imbalance_target: float,
 ) -> np.ndarray:
     """Parts of a graph none of whose components is half a part: the components,
-    each linked to its nearest by centroid, divided by METIS."""
-    from scipy.spatial import cKDTree
+    each linked to the ``ARCHIPELAGO_NEIGHBOURS`` nearest to it by centroid,
+    divided by METIS."""
 
     n_components = component_weight.size
     if n_components <= n_parts:
@@ -928,7 +1032,7 @@ def _archipelago(
     cols = np.bincount(component, weights=graph.weights * graph.cols) / component_weight
     k = min(ARCHIPELAGO_NEIGHBOURS + 1, n_components)
     centroids = np.column_stack((rows, cols))
-    _, nearest = cKDTree(centroids).query(centroids, k=k)
+    _, nearest = _nearest(centroids, centroids, k)
     pairs = np.column_stack(
         (np.repeat(np.arange(n_components), k - 1), nearest[:, 1:].ravel())
     )
@@ -945,7 +1049,6 @@ def _masses(linked: PartitionGraph, component: np.ndarray, land: np.ndarray):
     """Each island component tied to its nearest land node: the virtual edges,
     one per island (from its member nearest to land), and the land component
     every component belongs to (its mass)."""
-    from scipy.spatial import cKDTree
 
     is_land = np.zeros(component.max() + 1, dtype=np.bool_)
     is_land[land] = True
@@ -954,10 +1057,13 @@ def _masses(linked: PartitionGraph, component: np.ndarray, land: np.ndarray):
     mass_of = np.arange(is_land.size)
     if off_land.size == 0:
         return np.empty((0, 2), dtype=np.int64), mass_of
-    tree = cKDTree(np.column_stack((linked.rows[on_land], linked.cols[on_land])))
-    distance, nearest = tree.query(
-        np.column_stack((linked.rows[off_land], linked.cols[off_land]))
+    squared, nearest = _nearest(
+        np.column_stack((linked.rows[on_land], linked.cols[on_land])),
+        np.column_stack((linked.rows[off_land], linked.cols[off_land])),
+        1,
     )
+    distance = np.sqrt(squared[:, 0])
+    nearest = nearest[:, 0]
     island = component[off_land]
     order = np.lexsort((off_land, distance, island))
     _, first = np.unique(island[order], return_index=True)
@@ -1035,7 +1141,7 @@ def _partition_components(
     land_nodes: np.ndarray | None = None,
 ) -> np.ndarray:
     """Equal parts of a graph that may have several components, every part one
-    piece of land: contiguity first, balance second.
+    piece on its land, with the islands added: contiguity first, balance second.
 
     ``linked`` decides what touches (the ground with the banks of opened
     mainstems joined); ``ground`` holds only shared raster boundaries and is
@@ -1309,16 +1415,23 @@ def _coarsen_tributaries(
 
 
 def _align_labels(parts: np.ndarray, weights: np.ndarray, hint: np.ndarray, n_parts: int):
-    """Relabel the parts to overlap ``hint`` (another assignment) the most."""
+    """Relabel the parts to overlap ``hint`` (another assignment) the most.  More
+    than 8 parts are left as they are; a node whose hint is not a part does not
+    count."""
     if n_parts > 8:
         return parts
     overlap = np.zeros((n_parts, n_parts))
-    np.add.at(overlap, (parts, hint), weights)
+    hint = np.asarray(hint)
+    has_part = (parts >= 0) & (parts < n_parts)
+    held = has_part & (hint >= 0) & (hint < n_parts)
+    np.add.at(overlap, (parts[held], hint[held]), np.asarray(weights)[held])
     best = max(
         permutations(range(n_parts)),
         key=lambda mapping: sum(overlap[part, mapping[part]] for part in range(n_parts)),
     )
-    return np.asarray(best, dtype=np.int32)[parts]
+    relabelled = np.array(parts, dtype=np.int32)       # a node without a part keeps what it has
+    relabelled[has_part] = np.asarray(best, dtype=np.int32)[parts[has_part]]
+    return relabelled
 
 
 def _split_stem(
@@ -1428,10 +1541,11 @@ def assign_subbasins(
     ``is_tributary`` marks the tributary subtrees that drain into an opened
     basin's mainstem, ``stem`` says which mainstem (0 when there is one) and
     ``position`` gives the mainstem cell each enters (0 at the source);
-    tributaries entering consecutive cells of one mainstem touch, across it, and
+    tributaries that enter one mainstem one after the other touch, across it, and
     so do the pairs of ``stem_contacts`` (a node that touches a mainstem cell and
     the tributary that cell weighs with, ``_mainstem_contacts``).
-    Small tributaries move with the nearest eligible one.  ``hint`` (one part per
+    Small tributaries are grouped with the nearest eligible one for METIS; the
+    refinement may then move a tributary on its own.  ``hint`` (one part per
     node, Method 1's) only fixes the part labels.  A node without cells or a
     centroid is merged into one it touches.
 
@@ -1447,7 +1561,7 @@ def assign_subbasins(
     stem = np.where(is_tributary, np.asarray(stem, dtype=np.int64), -1)
     if hint is not None:
         hint = np.asarray(hint)
-    # the two banks of an opened mainstem touch: tributaries entering consecutive cells
+    # the two banks of an opened mainstem touch: tributaries that enter one after the other
     tributaries = np.flatnonzero(is_tributary)
     ordered = tributaries[np.lexsort((tributaries, position[tributaries], stem[tributaries]))]
     same_stem = stem[ordered[:-1]] == stem[ordered[1:]]
@@ -1526,12 +1640,57 @@ def assign_subbasins(
 
 
 # ---------------------------------------------------------------------------
+# Nearest neighbours
+# ---------------------------------------------------------------------------
+
+
+def _nearest(points, queries, k):
+    """``(squared distance, index)`` of the ``k`` points nearest each query, in the order of (squared distance,
+    index): of points equally far, the one with the lower index comes first, as in the C code's tree.
+
+    A k-d tree alone leaves the order of equally distant points to its own traversal (regular grids of nodes have
+    many), and that order decides which neighbours a node is linked to.  The squared distance is dx * dx + dy * dy
+    on the coordinates themselves."""
+    from scipy.spatial import cKDTree
+
+    points = np.asarray(points, dtype=np.float64).reshape(-1, 2)
+    queries = np.asarray(queries, dtype=np.float64).reshape(-1, 2)
+    n = points.shape[0]
+    k = min(int(k), n)
+    if k <= 0:                                              # no point to find, as the C code returns none
+        return np.empty((queries.shape[0], 0), dtype=np.float64), np.empty((queries.shape[0], 0), dtype=np.int64)
+    wider = min(n, k + 8)                                   # room for points as far as the k-th
+    _, near = cKDTree(points).query(queries, k=wider)
+    near = np.asarray(near, dtype=np.int64).reshape(queries.shape[0], wider)
+    dx = points[near, 0] - queries[:, None, 0]
+    dy = points[near, 1] - queries[:, None, 1]
+    squared = dx * dx + dy * dy
+    order = np.lexsort((near, squared), axis=1)
+    near = np.take_along_axis(near, order, axis=1)
+    squared = np.take_along_axis(squared, order, axis=1)
+    if wider < n:
+        # the k-th distance reaches to the last point fetched: points equally far may lie beyond it
+        for row in np.flatnonzero(squared[:, k - 1] == squared[:, wider - 1]):
+            dx = points[:, 0] - queries[row, 0]
+            dy = points[:, 1] - queries[row, 1]
+            every = dx * dx + dy * dy
+            first = np.lexsort((np.arange(n), every))[:wider]
+            near[row] = first
+            squared[row] = every[first]
+    return squared[:, :k], near[:, :k]
+
+
+# ---------------------------------------------------------------------------
 # The network
 # ---------------------------------------------------------------------------
 
 
-def _mainstem(idxs_ds, pit, upstream, us_table, n_up, mask):
+def _mainstem(idxs_ds, pit, upstream, us_table, n_up, mask, upa=None):
     """Cells from a pit up to the head, taking the larger tributary each time.
+
+    Of two tributaries with as many cells, the one with the larger ``upa`` when it is given, then the one with the
+    smaller cell index: the C code follows the first child of its depth-first order, whose donors are taken by
+    MERIT Hydro's upstream area, largest first, the smaller index first among equal areas.
 
     Only donors inside ``mask`` are followed: the donor table is the
     whole grid's, and a donor outside the mask was followed onto the stem."""
@@ -1544,7 +1703,13 @@ def _mainstem(idxs_ds, pit, upstream, us_table, n_up, mask):
         donors = donors[mask[donors]]
         if donors.size == 0:
             break
-        cell = int(donors[np.argmax(upstream[donors])])
+        # the larger tributary; of two equally large, the one with the larger upa (when given), then the one with
+        # the smaller cell index, whatever order the donor table lists them in
+        largest = upstream[donors].max()
+        tied = donors[upstream[donors] == largest]
+        if upa is not None and tied.size > 1:
+            tied = tied[upa[tied] == upa[tied].max()]
+        cell = int(tied.min())
         if cell in seen:          # a cycle: walking on would never end
             break
         seen.add(cell)
@@ -1570,7 +1735,7 @@ def _label_subtrees(idxs_ds, seq_d2u, on_stem, eligible, root):
 
 
 def _ratio(load):
-    """The heaviest subregion over the mean."""
+    """The heaviest subregion over the mean, the mean taken as at least one cell."""
     return float(load.max() / max(load.mean(), 1.0))
 
 
@@ -1599,7 +1764,7 @@ def _whole_basins(topo, n_parts, seed, imbalance_target, refine):
 
 def _open_basins(
     topo, opened, labels, basin_node_parts, seq_d2u, upstream, us_table, n_up,
-    n_parts, min_subtree_size, imbalance_target, seed, refine,
+    n_parts, min_subtree_size, imbalance_target, seed, refine, upa=None,
 ):
     """Method 2 with the basins of node numbers ``opened`` opened along their
     mainstems: the subregion of every cell and the loads."""
@@ -1613,7 +1778,7 @@ def _open_basins(
         # the pit is the cell that drains into itself, not the one with the largest count
         pits = members[idxs_ds[members] == members]
         pit = int(pits[0]) if pits.size == 1 else int(members[np.argmax(upstream[members])])
-        mainstems.append(_mainstem(idxs_ds, pit, upstream, us_table, n_up, mask)[::-1])
+        mainstems.append(_mainstem(idxs_ds, pit, upstream, us_table, n_up, mask, upa)[::-1])
     on_stem = np.zeros(size, dtype=np.uint8)
     stem_of_cell = np.full(size, -1, dtype=np.int64)
     position_of_cell = np.full(size, -1, dtype=np.int64)
@@ -1735,7 +1900,7 @@ def _heaviest_bordering(
 
 def _open_rivers(
     topo, part, load, labels, basin_node_parts, n_parts, min_subtree_size,
-    imbalance_target, seed, refine,
+    imbalance_target, seed, refine, upa=None,
 ):
     """Method 2: open as few basins along their mainstems as the balance needs.
 
@@ -1757,7 +1922,8 @@ def _open_rivers(
     opened.  The rounds stop at
     the target, at a round without such a gain, or at
     ``MAX_OPENED_BASINS``.  So the first basin opened is usually the dominant one
-    (always when it is heavier than an equal share times the target), and a
+    (an eligible one -- more than one headwater -- heavier than an equal share times
+    the target is tried first, and kept only when it pays off), and a
     further one only a basin that holds the balance up, and only when that
     clearly pays off.  A basin that is one chain of cells has no tributaries to
     open into and stays whole.
@@ -1824,7 +1990,7 @@ def _open_rivers(
             trial = _open_basins(
                 topo, np.asarray(opened + [int(candidate)]), labels, basin_node_parts,
                 seq_d2u, upstream, us_table, n_up, n_parts, min_subtree_size,
-                imbalance_target, seed, refine,
+                imbalance_target, seed, refine, upa,
             )
             ratio = _ratio(trial[1])
             key = (ratio, _overload(trial[1]))
@@ -1849,6 +2015,21 @@ def _open_rivers(
     return best
 
 
+class _NetworkView:
+    """The network as the partition sees it: the cells of the basins of a single
+    cell are taken out of ``mask``, and the basins may carry the caller's labels;
+    everything else is the network's own.  A basin of a single cell is a pit
+    that nothing flows into, so no other cell's upstream or mainstem changes."""
+
+    def __init__(self, topo, mask, basins):
+        self._topo = topo
+        self.mask = mask
+        self.basins = basins
+
+    def __getattr__(self, name):
+        return getattr(self._topo, name)
+
+
 def partition(
     topo,
     n_parts=4,
@@ -1858,8 +2039,10 @@ def partition(
     refine=True,
     min_subtree_size=100_000,
     imbalance_target=1.005,
+    upa=None,
+    basins=None,
 ):
-    """Assign every valid cell to one of ``n_parts`` subregions.
+    """Assign every valid cell, save the cells of single-cell basins, to one of ``n_parts`` subregions.
 
     Parameters
     ----------
@@ -1877,23 +2060,47 @@ def partition(
         Move boundary basins and tributaries to balance the subregions.
     min_subtree_size : int
         Tributaries with fewer cells are grouped with a larger neighbour for
-        METIS (at least ``METIS_GROUPS_PER_PART`` groups per subregion are kept).
+        METIS (at least ``METIS_GROUPS_PER_PART`` x subregions groups are kept in all, or every tributary as a group
+        of its own where there are fewer).
     imbalance_target : float
         The heaviest subregion over an equal share that is good enough.
+    upa : array of float32, optional
+        The upstream area of every cell (MERIT Hydro's ``upa``).  It decides between two tributaries with as many
+        cells when a mainstem is traced, as in the C code, whose depth-first order takes the donors by it; without
+        it the one with the smaller cell index is taken.
+    basins : array of int, optional
+        A label for the basin of every cell: positive on every cell of a basin, one label for each basin and one
+        basin for each label; other cells are not read.  FlowDivide's ``bsn`` of the region is one.  The basins are
+        the nodes of the graph in the order of their labels, and METIS divides a graph according to the order of
+        its nodes, so it is the labels the C code uses (FlowDivide's), with METIS 5.2.1
+        (:data:`METIS_LIBRARY_VARIABLE`), the same ``upa`` and the default options, that give the C code's
+        subregions to the pixel.  By default the package's own labels (:attr:`FlowTopo.basins`, the pits in the
+        order of the dfs ordering).
 
     Returns
     -------
     part : ndarray of int32
-        Subregion index per cell; ``-1`` outside the network, and ``-2``
-        (:data:`MAINSTEM`) on a mainstem cell held back to the second stage.
+        Subregion index per cell; ``-1`` outside the network and on the cell of
+        a basin of a single cell, and ``-2`` (:data:`MAINSTEM`) on a mainstem
+        cell held back to the second stage.
     load : ndarray of float64
         Work in each subregion, counted in cells.  Excludes the mainstem cells
-        held back and the cells caught in a cycle, neither of which a kernel
-        processes in this stage, so ``load.sum()`` is below the number of valid
-        cells whenever either is present.
+        held back, the cells caught in a cycle and the single-cell basins, none
+        of which is in a subregion's work, so ``load.sum()`` is below the number
+        of valid cells whenever any is present.
 
     Notes
     -----
+    A basin of a single cell (a pit that nothing flows into, mostly on a coast)
+    takes no part in the partition and keeps ``-1``, as in the C code and in
+    FlowTopo 1.0: as nodes they would add much to the graph and nothing to the
+    balance.  The C code also leaves the regions off the continents (MERIT
+    Hydro's island regions, numbered 10000 and up) whole; ``n_parts=1`` does
+    the same here.  METIS is pymetis's unless ``FLOWTOPO_METIS_LIBRARY`` names a
+    build of METIS 5.2.1 (:data:`METIS_LIBRARY_VARIABLE`); only with that build,
+    FlowDivide's labels (``basins``) and the same ``upa`` are the subregions the
+    C code's.
+
     Cells caught in a cycle have no place in the drainage hierarchy. They get
     the lightest subregion, so that every cell has one, but they do not count
     towards its load: a sequence skips them and a layering leaves them
@@ -1910,8 +2117,45 @@ def partition(
     if not imbalance_target >= 1:
         raise ValueError("imbalance_target must be at least 1")
     n_parts = int(n_parts)
+    if upa is not None:
+        # compared as the C code compares them, in float32
+        upa = np.ascontiguousarray(upa, dtype=np.float32).reshape(-1)
+        if upa.size != topo.idxs_ds.size:
+            raise ValueError(f"upa holds {upa.size} values; the network has {topo.idxs_ds.size} cells")
+        # finite and positive on every cell of the network, as ordering("dfs", upa=) asks and the C code: a NaN is
+        # neither the largest of the tied tributaries nor equal to it, and none would be left to follow
+        network_upa = upa[np.asarray(topo.mask).reshape(-1)]
+        if network_upa.size and not np.all(np.isfinite(network_upa) & (network_upa > 0)):
+            raise ValueError("upa holds a value that is not a finite, positive area on a cell of the network")
 
     idxs_ds, mask = topo.idxs_ds, topo.mask
+    own = np.asarray(topo.basins).reshape(-1)
+    in_a_basin = mask & (own > 0)
+    if basins is None:
+        labels_given = own
+    else:
+        labels_given = np.asarray(basins).reshape(-1)
+        if labels_given.size != own.size:
+            raise ValueError(f"basins holds {labels_given.size} values; the network has {own.size} cells")
+        if not np.issubdtype(labels_given.dtype, np.integer):
+            raise ValueError("basins must hold whole numbers")
+        if np.any(labels_given[in_a_basin] <= 0):
+            raise ValueError("basins must be positive on every cell of a basin")
+        # only the order of the labels counts: they become 1 .. n in that order, ranked in the caller's own type (an
+        # unsigned label above 2**63 must not wrap), so that no array is as long as the largest label
+        given_on = labels_given[in_a_basin]
+        ranks = np.zeros(own.size, dtype=np.int64)
+        ranks[in_a_basin] = np.searchsorted(np.unique(given_on), given_on) + 1
+        pairs = np.unique(np.stack([own[in_a_basin].astype(np.int64), ranks[in_a_basin]]), axis=1)
+        if pairs.shape[1] != np.unique(own[in_a_basin]).size or pairs.shape[1] != np.unique(pairs[1]).size:
+            raise ValueError("basins must give one label for each basin and one basin for each label")
+        labels_given = ranks
+    cells_of_basin = np.bincount(labels_given[in_a_basin].astype(np.int64))
+    single = np.zeros(mask.shape, dtype=bool)
+    single[in_a_basin] = cells_of_basin[labels_given[in_a_basin].astype(np.int64)] == 1
+    if single.any() or basins is not None:
+        mask = mask & ~single
+        topo = _NetworkView(topo, mask, labels_given)
     if not mask.any():
         return np.full(idxs_ds.size, -1, dtype=np.int32), np.zeros(n_parts, dtype=np.float64)
     part, load, labels, node_parts = _whole_basins(
@@ -1920,7 +2164,7 @@ def partition(
     if level == "subbasin":
         part, load = _open_rivers(
             topo, part, load, labels, node_parts, n_parts, min_subtree_size,
-            imbalance_target, seed, refine,
+            imbalance_target, seed, refine, upa,
         )
     # cells that reach no pit (label 0) take the lightest subregion; they are no work
     stranded = mask & (part == -1)

@@ -160,7 +160,8 @@ def test_no_layer_holds_a_cell_and_its_own_receiver(cycle_beside_basin, name):
     """The property that makes a push over a layer safe.
 
     No two cells in a layer share a receiver, and no cell's receiver sits in
-    the layer with it. The second half is the one a cycle can break: sweeping
+    the layer with it. The second half is the one a cycle can break, and the one
+    checked here: sweeping
     the leftover cells into a final layer would put a whole ring in one layer,
     where each cell reads a value another cell in the same layer is writing.
     All three layerings leave those cells unnumbered instead.
@@ -189,6 +190,17 @@ def test_partition_rejects_a_meaningless_part_count(lone_pit, n_parts):
 # ---------------------------------------------------------------------------
 # A grid that does not use 247 for nodata
 # ---------------------------------------------------------------------------
+
+
+def test_a_file_that_is_there_is_not_written_over(tmp_path):
+    from flowtopo.raster import GridHeader, read_geotiff, write_geotiff
+
+    header = GridHeader(2, 1, dtype="uint8", nodata=247, transform=(0.0, 1.0, 0.0, 1.0, 0.0, -1.0))
+    path = str(tmp_path / "dir.tif")
+    write_geotiff(path, np.array([1, 0], dtype=np.uint8), header)
+    with pytest.raises(FileExistsError):
+        write_geotiff(path, np.array([4, 0], dtype=np.uint8), header)
+    assert read_geotiff(path)[0].tolist() == [1, 0]
 
 
 @pytest.mark.parametrize("nodata_code,terminal", [(255, 0), (0, 255), (5, 0)])

@@ -1,9 +1,10 @@
 """Check the package against precomputed expected outputs.
 
 ``tests/reference/expected.npz`` holds the input grid and the expected outputs
-for the bundled example basin, so this runs on a fresh clone with numpy alone.
+for the bundled example basin, so this runs on a fresh clone with the package's
+own dependencies.
 
-The structures and the Strahler order must match exactly.  The two
+The structures and the Strahler order must match exactly.  The
 floating-point kernels are allowed a small tolerance, because summation order
 at a confluence differs between methods.
 """
@@ -90,7 +91,7 @@ def test_layering_matches_c(topo, name):
 
 def test_distance_to_outlet_matches_c(topo, ldn):
     theirs = _ref("ldn")
-    assert np.allclose(ldn[topo.mask], theirs[topo.mask], atol=1e-3)
+    assert np.allclose(ldn[topo.mask], theirs[topo.mask], rtol=0, atol=1e-3)     # a millimetre, absolute
 
 
 def test_upstream_area_matches_c(topo, upa):
@@ -101,7 +102,7 @@ def test_upstream_area_matches_c(topo, upa):
 def test_longest_upstream_path_matches_c(topo, ldn):
     mine = topo.longest_upstream_path(ldn, ordering="dfs")
     theirs = _ref("lup")
-    assert np.allclose(mine[topo.mask], theirs[topo.mask], atol=1e-3)
+    assert np.allclose(mine[topo.mask], theirs[topo.mask], rtol=0, atol=1e-3)   # a millimetre, absolute
 
 
 def test_strahler_matches_c(topo, upa):
@@ -234,7 +235,7 @@ def test_subbasin_balances_what_basin_cannot(topo):
 
 
 def test_mainstem_runs_after_its_tributaries(topo):
-    """Every mainstem cell has a donor outside the mainstem, so it must wait."""
+    """Cells of the mainstem are fed from the subregions, so the mainstem must wait."""
     part, _ = topo.partition(n_parts=4, level="subbasin")
     stem = np.nonzero(part == flowtopo.MAINSTEM)[0]
     assert stem.size > 0

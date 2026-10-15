@@ -1,6 +1,6 @@
 """The partitions: the graph algorithm, and the subregions of small networks.
 
-The graph tests reproduce, one by one, cases the reviews of the method found:
+The graph tests reproduce, one by one, cases that went wrong before:
 each fails on the code before its fix.
 """
 
@@ -37,15 +37,27 @@ def rivers(nrow, widths):
     return flowtopo.FlowTopo(idxs_ds.ravel(), (nrow, ncol))
 
 
+def single_cell_basins(topo):
+    """The cells of the basins of a single cell, which take no part in the partition."""
+    basins = np.asarray(topo.basins)
+    in_a_basin = topo.mask & (basins > 0)
+    cells_of_basin = np.bincount(basins[in_a_basin])
+    single = np.zeros(topo.mask.shape, dtype=bool)
+    single[in_a_basin] = cells_of_basin[basins[in_a_basin]] == 1
+    return single
+
+
 def check(topo, part, load):
-    """Every cell has a subregion or the second stage; the loads count the
-    rest; flow leaves a subregion only into the second stage, which drains
-    only on into itself; and the stages accumulate what one pass does."""
+    """Every cell has a subregion or the second stage, save a basin of a single
+    cell, which has neither; the loads count the rest; flow leaves a subregion
+    only into the second stage, which drains only on into itself; and the
+    stages accumulate what one pass does."""
     mask = topo.mask
+    single = single_cell_basins(topo)
     stem = part == flowtopo.MAINSTEM
-    assert np.all((part[mask] >= 0) | stem[mask])
-    assert np.all(part[~mask] == -1)
-    reaching = mask & (topo.basins > 0)
+    assert np.all((part[mask & ~single] >= 0) | stem[mask & ~single])
+    assert np.all(part[~mask | single] == -1)
+    reaching = mask & (topo.basins > 0) & ~single
     assert load.sum() + np.count_nonzero(stem) == np.count_nonzero(reaching)
     cells = np.flatnonzero(reaching & ~stem)
     downstream = topo.idxs_ds[cells]
@@ -209,6 +221,18 @@ def test_fragments_join_the_part_around_them():
     assert np.array_equal(parts, [0] * 5 + [1] * 5 + [0])
 
 
+def test_fragments_join_however_deep_they_lie():
+    # two heavy ends and a chain of one-node fragments between them, labelled 0, 1, 0, 1, ...: every
+    # fragment joins, one node a side a round (eight rounds left the middle of a chain of 42 apart)
+    for count in (10, 42, 80):
+        weights = np.ones(count)
+        weights[0] = weights[-1] = 100
+        graph = line_graph(weights)
+        parts = (np.arange(count) % 2).astype(np.int32)
+        partition._absorb_fragments(graph, parts, np.inf)
+        assert np.array_equal(parts, [0] * (count // 2) + [1] * (count // 2))
+
+
 def test_dominant_basin_is_a_part_of_its_own():
     graph = line_graph([70] + [10] * 9)
     parts = partition.assign_basins(graph, 4, imbalance_target=1.0)
@@ -284,6 +308,29 @@ def test_metis_never_leaves_a_part_empty():
     graph = line_graph([1, 1, 5, 1, 2])
     parts = partition._fill_empty_parts(graph, np.zeros(5, dtype=np.int32), 2)
     assert np.array_equal(parts, [0, 0, 0, 0, 1]) or np.array_equal(parts, [1, 0, 0, 0, 0])
+
+
+@pytest.mark.unit
+def test_an_empty_part_takes_the_leaf_of_the_tree_grown_by_rising_index():
+    # five nodes of one weight in one part.  The breadth-first tree from node 0, a node's neighbours by
+    # rising index, is 0-2, 2-1, 2-3, 1-4; its leaves are 3 and 4, and the empty part takes 3, as in the
+    # FlowTopo C code.  (Left to SciPy's own order the tree was 0-2, 2-3, 2-1, 3-4 and the node 1.)
+    graph = partition.PartitionGraph(
+        np.ones(5, dtype=np.int64), np.zeros(5), np.arange(5, dtype=np.float64),
+        np.array([(0, 2), (1, 2), (1, 4), (2, 3), (3, 4)], dtype=np.int32), np.ones(5, dtype=np.int64))
+    parts = partition._fill_empty_parts(graph, np.zeros(5, dtype=np.int32), 2)
+    assert np.array_equal(parts, [0, 0, 0, 1, 0])
+
+
+@pytest.mark.unit
+def test_a_hint_that_is_no_part_does_not_count():
+    # the second node has no hint (-1): it was read as the last part and turned the labels round
+    parts = np.array([0, 0, 1], dtype=np.int32)
+    weights = np.array([1, 5, 2], dtype=np.int64)
+    assert np.array_equal(partition._align_labels(parts, weights, np.array([0, -1, 1]), 2), [0, 0, 1])
+    # and a node without a part keeps what it has while the others are relabelled
+    parts = np.array([0, -1, 1], dtype=np.int32)
+    assert np.array_equal(partition._align_labels(parts, weights, np.array([1, 1, 0]), 2), [1, -1, 0])
 
 
 def test_nodes_without_cells_follow_a_neighbour():
@@ -646,15 +693,33 @@ def test_subbasin_level_opens_no_basin_without_a_clear_gain(monkeypatch):
 
 
 def test_an_archipelago_is_divided_by_proximity():
-    d8 = np.full((1, 39), D8_NODATA, dtype=np.uint8)
-    d8[0, ::2] = 0
+    # twenty islands of two cells (a cell flowing east into a pit), one column of sea between two
+    d8 = np.full((1, 59), D8_NODATA, dtype=np.uint8)
+    d8[0, 0::3] = 1
+    d8[0, 1::3] = 0
     topo = build(d8)
     part, load = topo.partition(4, "basin")
     check(topo, part, load)
-    assert np.array_equal(np.sort(load), [5, 5, 5, 5])
+    assert np.array_equal(np.sort(load), [10, 10, 10, 10])
     for value in range(4):
         columns = np.flatnonzero(part == value)
-        assert columns.max() - columns.min() == 8
+        assert columns.max() - columns.min() == 13
+
+
+def test_a_basin_of_a_single_cell_takes_no_part():
+    # as the C code and FlowTopo 1.0: the pit at (0, 4), which nothing flows into, keeps -1 and no load
+    d8 = np.full((3, 9), D8_NODATA, dtype=np.uint8)
+    d8[:, 0:3] = 1
+    d8[:, 3] = 0
+    d8[0, 4] = 0
+    d8[:, 5:8] = 1
+    d8[:, 8] = 0
+    topo = build(d8)
+    for level in ("basin", "subbasin"):
+        part, load = topo.partition(2, level)
+        check(topo, part, load)
+        assert part.reshape(topo.shape)[0, 4] == -1
+        assert load.sum() == topo.mask.sum() - 1
 
 
 def test_two_tributaries_entering_one_cell_keep_a_second_stage():
@@ -701,10 +766,12 @@ def test_a_basin_without_tributaries_stays_whole_and_apart():
 
 
 def test_a_basin_that_touches_only_the_mainstem_is_joined_across_it():
-    # (2,5) is a one-cell basin whose only neighbour, (1,5), is a mainstem cell
-    # of the right basin; the tributary (0,8) is the one that cell weighs with
-    code = {".": D8_NODATA, "S": 4, "E": 1, "o": 0}
-    rows = ["........S", ".S.S.EEES", "EEEo.o.Eo"]
+    # (2,5) and (3,5) are a basin whose only neighbour, (1,5), is a mainstem cell
+    # of the right basin; the tributary (0,8) is the one that cell weighs with.
+    # (Until 1.0.5 the basin was (2,5) alone; a basin of a single cell now
+    # takes no part, as in the C code, so it has a second cell below.)
+    code = {".": D8_NODATA, "S": 4, "E": 1, "N": 64, "o": 0}
+    rows = ["........S", ".S.S.EEES", "EEEo.o.Eo", ".....N..."]
     topo = build([[code[c] for c in row] for row in rows])
     for refine in (True, False):
         part, load = topo.partition(4, "subbasin", refine=refine)
@@ -712,6 +779,104 @@ def test_a_basin_that_touches_only_the_mainstem_is_joined_across_it():
         grid = part.reshape(topo.shape)
         if grid[2, 7] == grid[2, 5]:
             assert grid[0, 8] == grid[2, 5]
+
+
+def test_the_basins_given_number_the_nodes_and_are_checked(monkeypatch):
+    topo = rivers(21, [11] * 5)
+    own = np.asarray(topo.basins)
+    seen = []
+    build_graph = partition.graph_from_node_raster
+
+    def recording(nodes, n_nodes):
+        seen.append(np.array(nodes).ravel())
+        return build_graph(nodes, n_nodes)
+
+    monkeypatch.setattr(partition, "graph_from_node_raster", recording)
+    # the same basins, numbered the other way round and far apart: the nodes follow the labels' order
+    relabelled = np.where(own > 0, (100 - own.astype(np.int64)) * 2**40, 0)
+    part, load = topo.partition(4, "basin", basins=relabelled)
+    check(topo, part, load)
+    on = own > 0
+    assert np.array_equal(seen[0][on], 5 - own[on])
+    seen.clear()
+    topo.partition(4, "basin")
+    assert np.array_equal(seen[0][on], own[on] - 1)
+    for wrong in (relabelled[:-1], np.zeros_like(own), np.where(own > 0, 1, 0), relabelled.astype(np.float64)):
+        with pytest.raises(ValueError):
+            topo.partition(4, "basin", basins=wrong)
+
+
+def test_unsigned_labels_above_two_to_the_63_keep_their_order(monkeypatch):
+    seen = []
+    build_graph = partition.graph_from_node_raster
+
+    def recording(nodes, n_nodes):
+        seen.append(np.array(nodes).ravel())
+        return build_graph(nodes, n_nodes)
+
+    monkeypatch.setattr(partition, "graph_from_node_raster", recording)
+    d8 = np.array([[1, 0, D8_NODATA, 1, 0]], dtype=np.uint8)     # two basins of two cells
+    topo = build(d8)
+    labels = np.array([1, 1, 0, 2**63 + 1, 2**63 + 1], dtype=np.uint64)
+    part, load = topo.partition(2, "basin", basins=labels)
+    check(topo, part, load)
+    assert list(seen[0][[0, 1, 3, 4]]) == [0, 0, 1, 1]
+
+
+def test_a_metis_library_is_called_in_place_of_pymetis(monkeypatch):
+    """The partition calls the library _metis_library gives, with the C code's
+    arguments, and not pymetis (a stand-in library: no METIS is needed)."""
+    import ctypes
+
+    calls = []
+
+    class StandIn:
+        def METIS_SetDefaultOptions(self, options):
+            ctypes.memset(options, 0xFF, partition._METIS_NOPTIONS * 4)
+
+        def METIS_PartGraphKway(self, nvtxs, ncon, xadj, adjncy, vwgt, vsize, adjwgt, nparts, tpwgts, ubvec,
+                                options, objval, part):
+            calls.append((nvtxs._obj.value, nparts._obj.value))
+            values = np.ctypeslib.as_array(ctypes.cast(options, ctypes.POINTER(ctypes.c_int32)),
+                                           (partition._METIS_NOPTIONS,))
+            calls.append(tuple(int(values[k]) for k in (partition._METIS_OPTION_SEED,
+                                                        partition._METIS_OPTION_UFACTOR,
+                                                        partition._METIS_OPTION_CONTIG)))
+            return partition._METIS_OK
+
+    def no_pymetis():
+        raise AssertionError("pymetis was called")
+
+    monkeypatch.setattr(partition, "_metis_library", lambda: StandIn())
+    monkeypatch.setattr(partition, "_require_pymetis", no_pymetis)
+    graph = partition.graph_from_node_raster(np.arange(6, dtype=np.int64).reshape(1, 6), 6)
+    parts, cut = partition._metis(graph, 3, np.full(3, 1 / 3), 42, 5, contig=True)
+    assert calls == [(6, 3), (42, 5, 1)]
+    assert parts.dtype == np.int32 and parts.size == 6 and cut == 0
+    calls.clear()
+    parts_one, cut_one = partition._metis(graph, 1, np.ones(1), 42, 5, contig=True)
+    assert calls == [] and np.all(parts_one == 0) and cut_one == 0
+
+
+def test_the_metis_library_named_divides_as_pymetis_does_in_form():
+    """With FLOWTOPO_METIS_LIBRARY naming a METIS 5.2.1 built with 32-bit
+    integers and reals (the build the C code links), the partition comes from
+    it; skipped where no such library is named."""
+    import os
+
+    path = os.environ.get(partition.METIS_LIBRARY_VARIABLE, "")
+    if not path or not os.path.exists(path):
+        pytest.skip("no METIS library named in " + partition.METIS_LIBRARY_VARIABLE)
+    topo = rivers(21, [11] * 5)
+    part, load = topo.partition(4, "basin")
+    check(topo, part, load)
+    graph = partition.graph_from_node_raster(
+        np.asarray(topo.basins, dtype=np.int64).reshape(topo.shape) - 1, 5
+    )
+    parts, cut = partition._metis(graph, 4, np.full(4, 0.25), 42, 5, contig=False)
+    assert parts.size == 5 and set(parts.tolist()) <= {0, 1, 2, 3} and cut >= 0
+    parts_one, cut_one = partition._metis(graph, 1, np.ones(1), 42, 5, contig=False)
+    assert np.all(parts_one == 0) and cut_one == 0
 
 
 @pytest.mark.parametrize("level", ["basin", "subbasin"])

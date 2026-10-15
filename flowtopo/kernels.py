@@ -7,7 +7,7 @@ flow length upstream   many-to-one maximum, linear
 Strahler stream order  many-to-one, non-linear
 =====================  ====================================================
 
-Three manners:
+Four manners:
 
 ``serial``
     Walk a topological ordering one cell at a time.
@@ -113,6 +113,13 @@ def upstream_area(idxs_ds, cell_area, *, seq_u2d=None, decomp=None,
         Layering, required for every parallel manner.  Must be a u2d layering.
     us_table, n_up : optional
         Upstream adjacency, required for ``manner="pull"``.
+    manner : {"serial", "pull", "push", "atomic_push"}
+        How the accumulation is run: in one serial sweep, or layer by layer over a decomposition (pull, push, or
+        push with atomic additions).
+    nodata : float
+        The value written outside ``mask``.  Without a mask a cell off the
+        network keeps the ``cell_area`` given (the FlowTopo object passes its
+        network as the mask).
     mask : ndarray of bool, optional
         Cells outside the mask are set to ``nodata`` and never accumulate.
 

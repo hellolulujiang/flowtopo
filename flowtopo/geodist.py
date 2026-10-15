@@ -40,7 +40,7 @@ def degree_metres_x(lat):
 
 
 def _wgs84_zone(lat_rad):
-    """F(l) of the WGS84 zone integral, the C's wgs84_F."""
+    """F(l) of the WGS84 zone integral."""
     e = np.sqrt(WGS84_E2)
     sl = np.sin(lat_rad)
     return sl / (1.0 - WGS84_E2 * sl * sl) + np.log((1.0 + e * sl) / (1.0 - e * sl)) / (2.0 * e)
@@ -92,20 +92,18 @@ def pixel_length(idxs_ds, ncol, transform, latlon=True):
     dr = np.abs(r1 - r0)
     dc = np.abs((ds % ncol) - (idx % ncol))
     # on a geographic grid that spans the whole globe the step across
-    # the antimeridian is the short way round, as the C code's distance() takes it
+    # the antimeridian is the short way round, as the C code takes it
     # (1 column, not 359)
     if latlon and abs(ncol * xres) > 359.9:
         dc = np.where(dc > ncol // 2, ncol - dc, dc)
 
     if latlon:
-        # Midpoint of the two row edges, not of the two cell centres: a cell
-        # centre sits at north + (r + 0.5) * yres, so this latitude is half a
-        # pixel north of the true midpoint. It is what the C implementation
-        # that produced the released products does, and the two are kept
-        # identical on purpose. The cost is 0.16 m over a 98 km path on the
-        # bundled basin, 1.7e-6 relative, and it grows with the pixel: on a
-        # one-degree grid at 60 N it is near a percent. See docs/methods.md.
-        lat = north + (r0 + r1) / 2.0 * yres
+        # The latitude between the two cell centres: a centre sits at
+        # north + (r + 0.5) * yres.  Until 1.0.5 the
+        # midpoint of the two row edges was taken, half a pixel towards the
+        # first row: on the bundled basin 0.16 m in 82.7 km of the distance to
+        # the outlet, and near a percent on a one-degree grid at 60 N.
+        lat = north + ((r0 + r1) / 2.0 + 0.5) * yres
         dy = np.where(dr == 0, 0.0, degree_metres_y(lat) * abs(yres))
         dx = np.where(dc == 0, 0.0, degree_metres_x(lat) * abs(xres))
     else:

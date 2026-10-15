@@ -20,7 +20,7 @@ manners — worth ten minutes before reading further:
 ## Install
 
 ```sh
-pip install -e .            # numpy + rasterio
+pip install -e .            # numpy, rasterio, scipy, pymetis
 pip install -e ".[speed]"   # + numba, for the threaded kernels
 ```
 
@@ -243,14 +243,58 @@ benchmark uses four, one per NUMA node of a four-socket Xeon Platinum 8270
 server, with the thread count inside each subregion set where that server's
 memory bandwidth saturated.
 
-`part` holds a subregion index per cell, `-1` outside the network and
-`flowtopo.MAINSTEM` (-2) on a mainstem cell held back to the second stage.
-Both levels put contiguity first and balance second: within a land mass every
+`part` holds a subregion index per cell, `-1` outside the network and on the
+cell of a basin of a single cell, and `flowtopo.MAINSTEM` (-2) on a mainstem
+cell held back to the second stage. A basin of a single cell (a pit that
+nothing flows into, mostly on a coast) takes no part in the partition and is in
+no load, as in v1.0 and in the C programs.
+
+The C programs write the partition per MERIT Hydro region. This package gives
+the subregions of the current C programs (not those of the released 1.0
+partitions, see below), pixel for pixel, when it is given what they use: the
+basins numbered as FlowDivide numbers them (`basins=`, the region's `bsn`
+raster; METIS divides a graph according to the order of its nodes), METIS 5.2.1
+(`FLOWTOPO_METIS_LIBRARY`, below), the same `upa` (below) and the default
+options. On regions 5699 (10.7 million network pixels) and 27 (28.3 million, one
+basin opened at subbasin level) every pixel carries the C programs' code at both
+levels (checked 2026-10-14). Without the labels or without METIS 5.2.1 the
+subregions differ a little: on region 5699, 99.89 to 99.95 % of the pixels are
+in the same subregion once the subregions are matched, and the subregions can be
+numbered otherwise. The C programs leave the regions of
+island groups (ids from 10000 up) whole; `n_parts=1` does the same here.
+
+METIS: by default the one pymetis carries, METIS 5.1.0, which divides the same
+graph with the same seed and options otherwise than METIS 5.2.1, the version
+the C programs link. To use 5.2.1, build it as a shared library with 32-bit
+integers and 32-bit reals (`#define IDXTYPEWIDTH 32` and `#define
+REALTYPEWIDTH 32` in `metis.h`, as the C programs' build has them) and name the
+library in the environment variable `FLOWTOPO_METIS_LIBRARY`; the package then
+calls its `METIS_PartGraphKway` through `ctypes` with the arguments the C
+programs give it. A library built with 64-bit integers is refused when it is
+loaded; the width of the reals cannot be checked, so build it as said.
+
+```python
+import numpy as np, rasterio
+with rasterio.open("bsn_region_005699_3s.tif") as src:   # FlowDivide's basin ids of the region
+    bsn = src.read(1).astype(np.int64)
+# FLOWTOPO_METIS_LIBRARY=/path/to/libmetis.dylib set before Python starts
+part, load = topo.partition(4, "subbasin", basins=bsn, upa=upa)
+```
+
+They write it as
+`100 × region_id + 1 … 4` for the subregions, `100 × region_id + 5` for the
+held-back mainstem, `0` off the network. Two balances are reported: at subbasin
+level (and in choosing the basins to open) the largest subregion's cell count
+over the mean of the four, the mean taken as at least one cell (the first stage
+only; the held-back mainstem is not counted); the C basin-level step writes the
+largest over the smallest into its marker, `inf` when a subregion is empty.
+Both levels put contiguity first and balance second: on its land every
 subregion is one piece, the two banks of a held-back mainstem counting as
-touching. Land is the largest components of the network, at most one per
+touching, and the islands are added to the subregions of nearby land. Land is the largest components of the network, at most one per
 subregion (those of at least half an equal share, and the next largest when
 these are too few to be cut into every subregion); every other component goes
-as an island with the subregion of its nearest land.
+as an island with the subregion of its nearest land, and the refinement may move
+it whole to another subregion nearby.
 With `level="basin"` every
 basin stays whole, so one dominant basin leaves the other processors idle. The
 bundled example is a single basin, so it shows this directly: basin-level gives
@@ -258,16 +302,29 @@ bundled example is a single basin, so it shows this directly: basin-level gives
 
 `level="subbasin"` opens as few basins as the balance needs -- the dominant
 one first, another only where it holds the balance up and clearly pays off --
-along their mainstems, found by walking upstream from the outlet and taking the
-larger tributary at each confluence, into the tributary subtrees that drain
-into them; a tributary is not opened further.
-The subtrees and the other basins are divided into connected subregions with
-METIS and balanced by moving units along the boundaries. The mainstem stays
-with the subregion of its most upstream tributaries down to `P_min`, the first
-cell where a tributary of another subregion enters; below it, the mainstem
-depends on several subregions, so it is marked `flowtopo.MAINSTEM` and runs in
-a second stage after they finish. `imbalance_target`, `min_subtree_size`,
+along their mainstems, found by walking upstream from the outlet and taking at
+each confluence the tributary with the most cells upstream, into the tributary
+subtrees that drain into them; a tributary is not opened further. (This mainstem
+goes by cells; the main stem the `dfs` ordering puts first when given `upa` goes
+by upstream area. The two can part where a tributary with fewer cells drains more
+area.)
+The subtrees and the other basins are divided into subregions, each one piece
+on its land with the islands added, by METIS and balanced by moving units along
+the boundaries. Above `P_min`, the most
+upstream mainstem cell where a tributary of another subregion enters, the
+mainstem stays with the subregion of its most upstream tributaries; from `P_min`
+down, `P_min` included, it depends on several subregions, so it is marked
+`flowtopo.MAINSTEM` and runs in a second stage after they finish. `imbalance_target`, `min_subtree_size`,
 `seed` and `refine` tune it (see the docstring).
+
+Where two tributaries hold as many cells, the mainstem follows the one with the
+larger upstream area when the area is given (`topo.partition(..., upa=upa)`,
+MERIT Hydro's `upa`, one value a cell), then the one with the smaller cell
+index. The C code decides such a tie the same way, so give the same `upa`
+(finite and positive on every cell of the network) to follow the C code's
+mainstem there; without it only the cell index decides, and a mainstem can end
+in another headwater cell. That is the rule at a tie; what else the C
+programs' subregions need is said above (`basins=`, METIS 5.2.1).
 
 The partitions released in MERIT-FlowTopo were made by the C code with an
 earlier rule, which deals basins and tributary subtrees to the lightest
@@ -279,7 +336,7 @@ partitions as above.
 The kernels in `flowtopo.kernels` run one numpy operation per layer. That makes
 the write conflict visible deterministically, because `a[idx] += v` in numpy
 keeps only the last write when `idx` repeats, exactly as a non-atomic threaded
-push does. But numpy has no threads, so for speed use `flowtopo.parallel`,
+push does. But numpy runs these loops on one thread, so for speed use `flowtopo.parallel`,
 which compiles the same layer traversal with numba:
 
 ```python
@@ -559,10 +616,16 @@ basin only.
 
 Two things to know when a result here is compared with a downloaded layer:
 
+* the released `seq_dfs` raster holds at every cell its position in the
+  upstream-to-downstream sequence (the inverse of the list of cells
+  `topo.ordering("dfs", "u2d", upa=upa)` returns),
+  Int32 within a MERIT Hydro region and Int64 over a HydroSHEDS continent, `-1`
+  off the network;
 * the released `seq_dfs` takes the donors of a confluence by upstream drainage
   area, largest first, and this package takes them by cell index unless it is
-  given the area: `topo.ordering("dfs", upa=upa)` reproduces the released
-  order. Both are topological orders, and every kernel gives the same answer
+  given the area: `topo.ordering("dfs", "u2d", upa=upa)` follows the released
+  rule (the released raster itself, pixel for pixel, only with the same Float32
+  upstream area it was built from). Both are topological orders, and every kernel gives the same answer
   under either, up to the order the floating-point sums are added in;
 * the released cell areas are on the sphere of radius 6 371 000 m, which is
   what `geodist.cell_area_m2` computes by default; the C code defaults to the

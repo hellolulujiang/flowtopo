@@ -104,7 +104,13 @@ def read_geotiff(path):
 
 
 def write_geotiff(path, data, header):
-    """Write a flat array as a single-band compressed GeoTIFF."""
+    """Write a flat array as a single-band compressed GeoTIFF.
+
+    A file already at ``path`` is not written over: the call is refused (move the file
+    away, or give another name).  The check is made once, before the write: two runs that
+    write the same name at the same moment are not kept apart."""
+    if os.path.lexists(path):
+        raise FileExistsError(f"{path} exists and is not written over: move it away or give another name")
     rasterio = _rasterio()
     from rasterio.transform import Affine
 

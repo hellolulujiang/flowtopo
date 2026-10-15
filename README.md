@@ -30,7 +30,7 @@ Author: Lulu Jiang (<https://lulujiang.me>)
 ```sh
 git clone https://github.com/hellolulujiang/flowtopo.git
 cd flowtopo
-pip install -e .            # numpy + rasterio: structures and serial kernels
+pip install -e .            # numpy, rasterio, scipy, pymetis: structures, serial kernels, partitions
 pip install -e ".[speed]"   # adds numba: the threaded kernels need it
 ```
 
@@ -109,7 +109,7 @@ full-size MP4, or see all nine on the
 
 <table>
 <tr><th align="center" width="50%">basin-level<br><code>level="basin"</code></th><th align="center" width="50%">subbasin-level<br><code>level="subbasin"</code></th></tr>
-<tr><td align="center">whole basins go to subregions; a dominant basin cannot be balanced</td><td align="center">the dominant basin is cut along its mainstem; its tributary subtrees balance the load, and the mainstem runs in a separate stage</td></tr>
+<tr><td align="center">whole basins go to subregions; a dominant basin cannot be balanced</td><td align="center">the basins that keep the parts from balancing, usually the dominant one, are opened along their mainstems; their tributary subtrees balance the load, and the held-back mainstem section runs in a separate stage</td></tr>
 </table>
 
 ### At a confluence: how does a value reach the receiver?

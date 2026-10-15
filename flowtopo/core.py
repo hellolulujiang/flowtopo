@@ -279,7 +279,8 @@ def _upstream_table(idxs_ds, msk, use_msk, n_up, max_donors):
 
 
 def upstream_table(idxs_ds, msk=None):
-    """Upstream adjacency table, shape ``(ncells, max_donors)``.
+    """Upstream adjacency table and donor counts, ``(table, n_up)``: ``table`` has a
+    row per grid position, ``(idxs_ds.size, max_donors)``, -1 in an empty slot.
 
     Row ``i`` lists the cells that drain into ``i``, padded with ``-1``.  This
     is what the pull manner reads: a receiver gathers from its donors instead
@@ -354,7 +355,7 @@ def rank_to_pit(idxs_ds):
     """Downstream hops from each cell to its pit.
 
     ``rank[pit] == 0``, and the headwater farthest from the pit in hops holds
-    the largest value of its basin; another headwater can hold less.  ``-9999`` outside the network, ``-1`` inside a cycle.  Used here
+    the largest value of its basin; another headwater can hold less.  ``-9999`` outside the network, ``-1`` in a cycle or on a path that enters one.  Used here
     only as the intermediate of the as-late-as-possible layering.
     """
     return _rank(_checked_downstream(idxs_ds))
@@ -583,8 +584,8 @@ def seq_dfs_from_pit(idxs_ds, upa=None):
     ``upa`` takes the donors of a cell largest first by upstream area instead
     of by index, which puts the main stem straight after the outlet and gives
     it consecutive positions.  **That is the order of the released
-    MERIT-FlowTopo ``seq_dfs`` layer**, which the C driver builds with
-    ``dfs_traversal_order_sorted``; without ``upa`` the donors are taken in
+    MERIT-FlowTopo ``seq_dfs`` layer**, as the C code builds it; without
+    ``upa`` the donors are taken in
     index order, which is a valid topological order too and is what every
     kernel here has always used.  The areas are taken as float32, as the
     released layer holds them.  Any kernel gives the same answer under
@@ -652,7 +653,8 @@ def _basin_labels(idxs_ds, seq_d2u):
 
 
 def basin_labels(idxs_ds, seq_d2u=None):
-    """One-based basin id per cell, ``0`` outside the network.
+    """``(labels, count)``: one-based basin id per cell (uint32), ``0`` outside the
+    network and on a cell whose path reaches no pit; ``count`` the basins.
 
     A downstream-to-upstream pass visits every receiver before its donors, so
     a pit opens a new basin and every other cell copies its receiver's label.
@@ -817,7 +819,8 @@ def layering_cfds(idxs_ds):
     That is what makes plain push safe without atomics, and it is the only one
     of the three that makes Strahler order safe under push at all: the
     confluence rule is a comparison, not an addition, so no atomic can fix it.
-    Costs at most a few layers over the plain form.
+    It can take more layers than the plain form: a held-back cell can hold
+    back the next, confluence after confluence (none on the example basin).
 
     Cells caught in a cycle cannot be scheduled by their dependencies and
     keep ``-1``, as in the as-soon-as-possible form

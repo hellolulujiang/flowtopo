@@ -10,7 +10,7 @@ pytest
 ```
 
 `tests/reference/expected.npz` holds the input grid and the expected outputs
-for the example basin, so the tests run on a fresh clone with numpy alone.
+for the example basin, so the tests need no data beyond the repository.
 
 ## What the tests check
 

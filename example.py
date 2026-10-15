@@ -1,6 +1,6 @@
 """Run every structure, kernel and manner on the bundled example basin.
 
-The Python counterpart of ``flowtopo_example`` in the C package.  It
+The Python counterpart of the C code's example.  It
 
 1. reads the D8 grid;
 2. builds the three serial orderings, the three parallel layerings and the
@@ -11,6 +11,8 @@ The Python counterpart of ``flowtopo_example`` in the C package.  It
 6. writes the arrays to ``out/``.
 
     python example.py [--data data/dir_example.tif] [--out out]
+
+The output directory must not hold the files of an earlier run: none is written over.
 """
 
 import argparse
@@ -20,6 +22,7 @@ import time
 import numpy as np
 
 import flowtopo
+from flowtopo import core
 from flowtopo.raster import write_geotiff
 
 ORDERINGS = ("dfs", "bfs", "topo")
@@ -35,6 +38,7 @@ def banner(title):
 
 
 def timed(call, repeats=3):
+    call()                                   # compiled and run once first: the times below are the build alone
     times = []
     for _ in range(repeats):
         start = time.perf_counter()
@@ -72,20 +76,36 @@ def main():
     print(f"  grid            : {topo.nrow} x {topo.ncol} = {total:,} cells")
     print(f"  valid cells     : {topo.ncells:,} "
           f"({100.0 * topo.ncells / total:.1f}% of the grid)")
+    # nothing to compare on a grid without a valid cell, and a network with a cycle cannot be traversed: the
+    # orderings leave its cells out, every method then agrees on the cells that are left, and the comparison
+    # below would pass on a part of the network
+    if topo.ncells == 0:
+        print("\n  The grid holds no valid cell: nothing to compute.")
+        return 1
+    visited = int(topo.ordering("dfs").size)
+    if visited != topo.ncells:
+        print(f"\n  FAIL: {topo.ncells - visited:,} cells lie on or above a cycle of the flow directions and "
+              "cannot be ordered; the grid is not a river network.")
+        return 1
     print(f"  basins          : {topo.nbasins}")
     print(f"  numba           : {'yes' if flowtopo.HAS_NUMBA else 'no (pure python, slow)'}")
 
     # ---- Stage 1: the eight structures ----------------------------------
     banner("Stage 1  Building the eight reusable structures")
+    # the builders themselves: the object keeps what it built, and asking it again would time the lookup
+    builders = {
+        "dfs": lambda: core.seq_dfs_from_pit(topo.idxs_ds),
+        "bfs": lambda: core.seq_bfs_from_pit(topo.idxs_ds),
+        "topo": lambda: core.seq_topo_from_source(topo.idxs_ds),
+        "asap": lambda: core.layering_asap(topo.idxs_ds),
+        "cfds": lambda: core.layering_cfds(topo.idxs_ds),
+        "alap": lambda: core.layering_alap(topo.idxs_ds, topo.basins),
+    }
     for name in ORDERINGS:
-        seconds, seq = timed(
-            lambda n=name: topo.ordering(n, "u2d"), args.repeats
-        )
+        seconds, seq = timed(builders[name], args.repeats)
         print(f"  {ORDER_LABEL[name]:9s} {seq.size:10,} cells   {seconds:8.4f} s")
     for name in LAYERINGS:
-        seconds, (layers, nlayers) = timed(
-            lambda n=name: topo.layering(n), args.repeats
-        )
+        seconds, (layers, nlayers) = timed(builders[name], args.repeats)
         print(f"  {LAYER_LABEL[name]:9s} {nlayers:10,} layers  {seconds:8.4f} s")
 
     # ---- Stage 2: spatial partitions -------------------------------------

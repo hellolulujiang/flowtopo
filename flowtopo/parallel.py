@@ -2,8 +2,8 @@
 
 The vectorised kernels in :mod:`flowtopo.kernels` run one numpy operation per
 layer.  That is convenient and it is where the write-conflict shows up
-deterministically, but numpy has no threads, so a layered form there can only
-lose to a good serial loop.
+deterministically, but numpy runs these loops on one thread, so a layered form
+there can only lose to a good serial loop.
 
 This module is the other half: the same layer-by-layer traversal compiled by
 numba with ``prange``, one thread per chunk of a layer.  Now the layering
@@ -22,7 +22,7 @@ rather than falling back to a serial loop while still being called parallel.
 
 import numpy as np
 
-from .core import _checked_downstream
+from .core import _checked_cells, _checked_downstream
 from ._compat import HAS_NUMBA, njit, prange
 
 UPA_NODATA = np.float32(-9999.0)
@@ -124,7 +124,8 @@ def upstream_area(topo, layering="cfds", manner="push", cell_area=None):
     # from the serial one at the outlet of a large basin
     area = np.asarray(area)
     dtype = np.float32 if area.dtype == np.float32 else np.float64
-    upa = np.ascontiguousarray(area, dtype=dtype).copy()
+    # one value per cell, flat (a raster-shaped area is taken row by row, as the serial kernel takes it)
+    upa = _checked_cells("cell_area", area, topo.idxs_ds.size, dtype).copy()
     upa[~topo.mask] = dtype(UPA_NODATA)
     if manner == "push":
         _upa_push(topo.idxs_ds, decomp.cells, decomp.offsets, upa, UPA_NODATA)
@@ -153,7 +154,7 @@ def longest_upstream_path(topo, ldn, layering="cfds"):
     from .kernels import _lup_finalise
 
     decomp = topo.decomposition(layering, "u2d")
-    ldn = np.ascontiguousarray(ldn, dtype=np.float32)
+    ldn = _checked_cells("ldn", ldn, topo.idxs_ds.size, np.float32)
     height = ldn.copy()
     height[~topo.mask] = FLN_NODATA
     _lup_push(topo.idxs_ds, decomp.cells, decomp.offsets, height, FLN_NODATA)

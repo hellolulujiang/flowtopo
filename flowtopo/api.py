@@ -125,19 +125,24 @@ class FlowTopo:
         if earth not in geodist.EARTH_MODELS:
             raise ValueError(f"unknown earth model {earth!r}; use one of {geodist.EARTH_MODELS}")
         self.earth = earth
+        # the network is cut to the mask here, once: a cell outside it leaves the network (-1), and a
+        # cell inside it whose receiver is outside becomes a pit.  The orderings, the basins, the partition and
+        # the layerings were built on the whole idxs_ds while the kernels honoured the mask, so a cell outside it
+        # was numbered, labelled a basin and put on a mainstem.  Without a mask the cells of the network are those
+        # with a receiver, and the same cut is made: a cell that drains into a cell off the network is a pit
+        # (until 1.0.5 it kept its link, and its basin was left out of the partition's loads)
         if mask is not None:
-            # the network is cut to the mask here, once: a cell outside it leaves the network (-1), and a
-            # cell inside it whose receiver is outside becomes a pit.  The orderings, the basins, the partition and
-            # the layerings were built on the whole idxs_ds while the kernels honoured the mask, so a cell outside it
-            # was numbered, labelled a basin and put on a mainstem
             mask_array = np.ascontiguousarray(mask, dtype=bool).reshape(-1)
             if mask_array.size != size:
                 raise ValueError("mask does not match shape")
-            cut = np.array(self.idxs_ds, dtype=np.int32)
-            cut[~mask_array] = -1
-            receiver = cut.astype(np.int64)
-            inside = cut >= 0
-            leaves = inside & ~mask_array[np.where(inside, receiver, 0)]
+        else:
+            mask_array = np.asarray(self.idxs_ds) >= 0
+        cut = np.array(self.idxs_ds, dtype=np.int32)
+        cut[~mask_array] = -1
+        receiver = cut.astype(np.int64)
+        inside = cut >= 0
+        leaves = inside & ~mask_array[np.where(inside, receiver, 0)]
+        if mask is not None or leaves.any():
             cut[leaves] = np.flatnonzero(leaves).astype(np.int32)
             self.idxs_ds = _frozen(cut)
         self.mask = _frozen(self.idxs_ds >= 0)
@@ -197,7 +202,7 @@ class FlowTopo:
     def from_raster(cls, path, earth="sphere"):
         """Build from a single-band D8 GeoTIFF.
 
-        Whether the grid is read as degrees or as metres comes from its CRS, not from an assumption."""
+        Whether the grid is read as degrees or as metres comes from its CRS; a file without a CRS is read as degrees."""
         data, header = read_geotiff(path)
         return cls.from_d8(data, shape=header.shape,
                            transform=header.transform, latlon=header.latlon,
@@ -232,7 +237,8 @@ class FlowTopo:
 
     @property
     def basins(self):
-        """One-based basin id per cell, ``0`` outside the network."""
+        """One-based basin label per cell, ``0`` outside the network: the pits numbered in the order the dfs
+        ordering meets them, not FlowDivide's ``global_basin_id`` or ``local_basin_id``."""
         if "basins" not in self._cache:
             labels, count = core.basin_labels(self.idxs_ds, self.ordering("dfs"))
             self._cache["basins"] = _frozen(labels)
@@ -347,12 +353,15 @@ class FlowTopo:
 
     def upstream(self, mask=None):
         """``(us_table, n_up)``: the upstream adjacency the pull manner reads."""
-        key = "us" if mask is None else "us_masked"
-        if key not in self._cache or mask is not None:
-            msk = None if mask is None else np.asarray(mask, dtype=np.uint8)
-            table, n_up = core.upstream_table(self.idxs_ds, msk)
-            self._cache[key] = (_frozen(table), _frozen(n_up))
-        return self._cache[key]
+        if mask is not None:
+            # made for this call and handed to it: one cache entry for every mask could give a caller the table
+            # another thread had just made for another mask
+            table, n_up = core.upstream_table(self.idxs_ds, np.asarray(mask, dtype=np.uint8))
+            return _frozen(table), _frozen(n_up)
+        if "us" not in self._cache:
+            table, n_up = core.upstream_table(self.idxs_ds, None)
+            self._cache["us"] = (_frozen(table), _frozen(n_up))
+        return self._cache["us"]
 
     # -- kernels -----------------------------------------------------------
 
@@ -365,7 +374,8 @@ class FlowTopo:
 
     def upstream_area(self, ordering=None, layering=None, manner=None,
                       cell_area=None):
-        """Upstream drainage area in square kilometres.
+        """Upstream drainage area: the sum of ``cell_area`` over every cell upstream, in
+        square kilometres with the default cell areas (a custom ``cell_area`` keeps its unit).
 
         Give either ``ordering=`` (serial) or ``layering=`` (parallel).  For a
         layering, ``manner`` is ``"pull"``, ``"push"`` or ``"atomic_push"``;
