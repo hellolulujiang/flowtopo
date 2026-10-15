@@ -4,7 +4,7 @@
 for the bundled example basin, so this runs on a fresh clone with the package's
 own dependencies.
 
-The structures and the Strahler order must match exactly.  The
+The structures and the Strahler stream order must match exactly.  The
 floating-point kernels are allowed a small tolerance, because summation order
 at a confluence differs between methods.
 """

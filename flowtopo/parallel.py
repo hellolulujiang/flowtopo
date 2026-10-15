@@ -138,7 +138,7 @@ def upstream_area(topo, layering="cfds", manner="push", cell_area=None):
 
 
 def distance_to_outlet(topo, layering="cfds"):
-    """Threaded distance to outlet.  One-to-one, so safe under any layering."""
+    """Threaded flow length downstream.  One-to-one, so safe under any layering."""
     _require_numba()
     decomp = topo.decomposition(layering, "d2u")
     dist = np.zeros(topo.idxs_ds.size, dtype=np.float32)
@@ -149,7 +149,7 @@ def distance_to_outlet(topo, layering="cfds"):
 
 
 def longest_upstream_path(topo, ldn, layering="cfds"):
-    """Threaded longest upstream path.  Push form; needs ``layering="cfds"``."""
+    """Threaded flow length upstream.  Push form; needs ``layering="cfds"``."""
     _require_numba()
     from .kernels import _lup_finalise
 

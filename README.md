@@ -128,7 +128,7 @@ full-size MP4, or see all nine on the
 The same methods, run with the C implementation over the 90 m MERIT Hydro network, are on Zenodo:
 
 * **MERIT-FlowTopo** — the structures, per region ([10.5281/zenodo.20653059](https://doi.org/10.5281/zenodo.20653059))
-* **MERIT-DrainAttr** — flow length downstream and upstream, Strahler order ([10.5281/zenodo.20686665](https://doi.org/10.5281/zenodo.20686665))
+* **MERIT-DrainAttr** — flow length downstream and upstream, Strahler stream order ([10.5281/zenodo.20686665](https://doi.org/10.5281/zenodo.20686665))
 * **MERIT-FullBasin** — the regions they are computed on ([10.5281/zenodo.20344113](https://doi.org/10.5281/zenodo.20344113))
 * **MERIT-FlowTopo code** — the C code, the figure scripts and an archived copy of this package ([10.5281/zenodo.22227621](https://doi.org/10.5281/zenodo.22227621))
 
@@ -146,7 +146,8 @@ released structures with the MERIT Hydro grid: [user guide](docs/user-guide.md#g
 * [`docs/methods.md`](docs/methods.md) — each method with its origin and its
   complexity, and what is borrowed from pyflwdir.
 * [`examples/quickstart.ipynb`](examples/quickstart.ipynb) — a notebook on the
-  bundled data, stored with its output.
+  bundled data, stored with its output; it needs Jupyter and matplotlib
+  (`pip install notebook matplotlib`).
 
 ## Tests
 

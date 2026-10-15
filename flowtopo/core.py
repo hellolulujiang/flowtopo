@@ -591,9 +591,9 @@ def seq_dfs_from_pit(idxs_ds, upa=None):
     released layer holds them.  Any kernel gives the same answer under
     either, up to the order floating-point sums are added in, since both are
     topological orders: as returned (d2u) a receiver
-    comes before its donors, which the distance to the outlet takes; reversed
+    comes before its donors, which the flow length downstream takes; reversed
     (u2d) a donor comes before its receiver, which the upstream area, the
-    upstream flow length and the Strahler order take.
+    flow length upstream and the Strahler stream order take.
     """
     idxs_ds = _checked_downstream(idxs_ds)
     if upa is None:
@@ -817,7 +817,7 @@ def layering_cfds(idxs_ds):
     receiver, so a scatter-add over a layer touches each target exactly once.
 
     That is what makes plain push safe without atomics, and it is the only one
-    of the three that makes Strahler order safe under push at all: the
+    of the three that makes Strahler stream order safe under push at all: the
     confluence rule is a comparison, not an addition, so no atomic can fix it.
     It can take more layers than the plain form: a held-back cell can hold
     back the next, confluence after confluence (none on the example basin).

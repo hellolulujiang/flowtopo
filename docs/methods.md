@@ -50,9 +50,9 @@ Which donor of a confluence is taken first is a choice, and there are two:
 
 Every kernel gives the same answer under either, since both are topological
 orders: as returned (`d2u`) a receiver comes before its donors, which the
-distance to the outlet takes; reversed (`u2d`) a donor comes before its
-receiver, which the upstream area, the upstream flow length and the Strahler
-order take — up to the order the floating-point sums
+flow length downstream takes; reversed (`u2d`) a donor comes before its
+receiver, which the upstream area, the flow length upstream and the Strahler
+stream order take — up to the order the floating-point sums
 at a confluence are added in, which for drainage area in `float32` shows at
 about 4e-6 of the value on the example basin. In `float64` the two orders gave
 the same value for every cell of that basin, which is a measurement and not a
@@ -224,7 +224,7 @@ bounded connectivity search for each move it tries.
 
 All four are one pass over a structure: O(N) time serial, O(N) space beyond
 the structure itself. Three of them also have a threaded form in
-`flowtopo.parallel`, O(N/P + L) over L layers. Strahler order has none, since
+`flowtopo.parallel`, O(N/P + L) over L layers. Strahler stream order has none, since
 its confluence rule is a comparison rather than an addition.
 
 `push` writes into the receiver and is correct only where no two cells of a
@@ -249,8 +249,8 @@ receiver must be finished before its donors.
 
 ### `longest_upstream_path`
 
-Propagates the maximum distance-to-outlet seen upstream, then subtracts the
-cell's own. Takes the output of `distance_to_outlet`.
+Propagates the largest flow length downstream seen upstream, then subtracts
+the cell's own. Takes the output of `distance_to_outlet`.
 
 ### `strahler_order`
 
@@ -323,8 +323,8 @@ problem. Over one 90 m cell the two agree far below the resolution of the data.
 The latitude at which they are evaluated is the one between the two cell
 centres. Until 1.0.5 it was the midpoint of the two row edges, half a pixel
 towards the first row, as the C code also took it until then: on the bundled basin
-0.16 m in 82.7 km of the distance to the outlet and 0.15 m in 98 km of the longest
-upstream path, and near a percent on a one-degree grid at 60 N. The C code and this package changed together.
+0.16 m in 82.7 km of the flow length downstream and 0.15 m in 98 km of the flow
+length upstream, and near a percent on a one-degree grid at 60 N. The C code and this package changed together.
 
 ### `raster`
 

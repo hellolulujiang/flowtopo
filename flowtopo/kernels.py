@@ -34,7 +34,7 @@ Four manners:
 
 That last pair is the practical point of the conflict-free layering in a numpy
 setting: it buys the correctness of the slow scatter at the speed of the fast
-one, without threads and without atomics.  Strahler order cannot be rescued by
+one, without threads and without atomics.  Strahler stream order cannot be rescued by
 an atomic at all -- its confluence rule is a comparison and a count, not an
 addition -- so the layering is the only way to run it under push.
 """
@@ -189,7 +189,7 @@ def upstream_area(idxs_ds, cell_area, *, seq_u2d=None, decomp=None,
 
 
 # ---------------------------------------------------------------------------
-# flow length downstream (distance to outlet)
+# flow length downstream (distance_to_outlet)
 # ---------------------------------------------------------------------------
 
 
@@ -252,7 +252,7 @@ def distance_to_outlet(idxs_ds, plen, *, seq_d2u=None, decomp=None,
 
 
 # ---------------------------------------------------------------------------
-# flow length upstream (longest upstream path)
+# flow length upstream (longest_upstream_path)
 # ---------------------------------------------------------------------------
 
 
@@ -289,8 +289,8 @@ def longest_upstream_path(idxs_ds, ldn, *, seq_u2d=None, decomp=None,
                           nodata=FLN_NODATA, mask=None):
     """Distance from each cell up to the furthest headwater above it.
 
-    Propagates the maximum distance-to-outlet seen upstream, then subtracts the
-    cell's own distance to outlet.  ``ldn`` is the output of
+    Propagates the largest flow length downstream seen upstream, then subtracts
+    the cell's own.  ``ldn`` is the output of
     :func:`distance_to_outlet`.
     """
     nodata = _checked_nodata(nodata, np.float32)

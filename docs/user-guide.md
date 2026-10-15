@@ -3,7 +3,7 @@
 ## What this package is for
 
 You have a D8 flow-direction raster and you want to compute something that
-travels along the network: drainage area, distance to the outlet, stream order.
+travels along the network: drainage area, flow length downstream, stream order.
 Every such computation needs the cells visited in an order that respects the
 flow, and there is more than one such order. This package builds six of them
 and runs four kernels over any of them, so you can pick the one that suits your
@@ -184,7 +184,7 @@ For a layering you also choose how a cell and its receiver exchange the value:
 | --- | --- | --- |
 | `pull` | the receiver gathers from its donors | always; needs the adjacency table |
 | `push` | each cell writes into its receiver | only under `cfds` |
-| `atomic_push` | the same scatter through `np.add.at` (`np.maximum.at` for the longest upstream path) | always, except Strahler order, which has none |
+| `atomic_push` | the same scatter through `np.add.at` (`np.maximum.at` for the flow length upstream) | always, except Strahler stream order, which has none |
 
 ```python
 upa = topo.upstream_area(layering="cfds", manner="push")
@@ -207,7 +207,7 @@ Both donors sit in the same `asap` layer, so one write lands on top of the
 other and the confluence never happens. Drainage area goes the same way, one
 donor short. If you set `manner` yourself, count the conflicts first.
 
-Strahler order has no `atomic_push`, and this is not an oversight. Its
+Strahler stream order has no `atomic_push`, and this is not an oversight. Its
 confluence rule is *two branches of equal order raise the order by one*, which
 is a comparison and a count, not one addition. No single atomic operation
 implements that, so under a layering the only safe push is the conflict-free
@@ -372,10 +372,10 @@ convention: codes are powers of two clockwise from east, 0 and 255 are
 terminals, 247 is nodata. The file's own nodata value is honoured as well,
 which matters because 255 means an endorheic terminal here, not nodata.
 
-For a MERIT Hydro region rather than your own grid,
-<https://fullhydro.org/fullbasin/> (under "Which MERIT Hydro tiles do I
-need?") lists which MERIT Hydro tiles cover each region and where each one
-goes. It does not host the tiles; download those
+For a MERIT Hydro region rather than your own grid, the basin and region
+map of FullBasin version 1.0, <https://fullhydro.org/merit-90m/v1.0/fullbasin/flowdivide/>,
+lists which MERIT Hydro tiles cover each region (pick the region) and its window
+on the global grid. It does not host the tiles; download those
 from their authors.
 
 Write a result back next to the input:
@@ -402,7 +402,7 @@ Drainage area is the one result not expected to agree bit for bit across
 manners. Floating-point addition is not associative and each manner sums a
 confluence's donors in a different order; on the bundled basin the spread is
 0.0027 km², about 1e-6 of the largest value. Everything else agrees exactly,
-longest upstream path included, because its confluence rule takes the larger
+flow length upstream included, because its confluence rule takes the larger
 of two donors rather than adding them. The checks treat them that way.
 
 ## Where to look next
@@ -594,9 +594,10 @@ Four maps over the 65 regions, one per line below. Click a line to open its map.
 The structures index into the MERIT Hydro flow-direction grid, which is not
 redistributed here: get it from
 <https://global-hydrodynamics.github.io/MERIT_Hydro/> under its own terms.
-Which MERIT Hydro tiles a region needs, and the row and column offset of each,
-is listed at <https://fullhydro.org/fullbasin/> under "Which MERIT Hydro tiles
-do I need?". Region boxes sit on
+Which MERIT Hydro tiles a region needs, and the region's window on the global
+grid, are listed on the basin and region map of FullBasin version 1.0,
+<https://fullhydro.org/merit-90m/v1.0/fullbasin/flowdivide/> (the released
+structures use its regions). Region boxes sit on
 whole degrees and one degree is 1,200 cells, so a region is cut from the
 global rasters by integer arithmetic, with no resampling.
 

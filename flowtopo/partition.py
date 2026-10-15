@@ -22,7 +22,7 @@ of nearby land.
     headwater -- heavier than an equal share times the target is tried first,
     and kept open only when that improves the balance); another only when it is a whole basin in or beside
     a subregion over the target or the lightest subregion and opening it
-    lowers max/mean (or, max/mean as it is, the overload) by
+    lowers max/mean (or, with the heaviest part no heavier, the overload) by
     ``OPEN_MIN_GAIN`` or more (one layer only: a
     tributary is never opened further).  The tributaries and the other basins form one
     graph, divided at once; each mainstem cell weighs with the tributary that
@@ -118,9 +118,9 @@ METIS 5.1.0, which divides the same graph with the same seed and options
 otherwise than METIS 5.2.1, the version the C code links (its build script,
 ``build_metis_5.2.1.sh``, makes ``libmetis.dylib`` from the same objects);
 a 5.1 build (conda's 5.1.1) has also stopped on a MERIT Hydro region with a
-fault in its coarsening that 5.2.1 corrects.  The library must be built with
-32-bit integers and 32-bit reals, as that build is: the integer width is
-checked when it is loaded, the real width cannot be."""
+fault in its coarsening that 5.2.1 corrects.  The library must be METIS 5.2,
+built with 32-bit integers and 32-bit reals, as that build is: the version and
+the integer width are checked when it is loaded, the real width cannot be."""
 
 _METIS_NOPTIONS = 40
 _METIS_OPTION_SEED = 9
@@ -167,6 +167,13 @@ def _metis_library():
         return None
     if path not in _metis_libraries:
         library = ctypes.CDLL(path)
+        # METIS 5.2 moved the options this call sets (the seed, the contiguity and the imbalance are 9, 13 and 18;
+        # 8, 11 and 16 in 5.1), so a 5.1 library would take them as other options without an error.  5.2 is told
+        # apart by a routine 5.1 does not have
+        if not hasattr(library, "METIS_CacheFriendlyReordering"):
+            raise RuntimeError(
+                f"{path} is not METIS 5.2 (its options lie elsewhere); {METIS_LIBRARY_VARIABLE} needs METIS 5.2.1"
+            )
         # METIS_SetDefaultOptions writes METIS_NOPTIONS values of -1: read as 64-bit integers, a build with 32-bit
         # integers leaves the second half of the buffer at 0
         probe = np.zeros(_METIS_NOPTIONS, dtype=np.int64)

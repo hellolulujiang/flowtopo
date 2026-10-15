@@ -15,7 +15,7 @@ for the example basin, so the tests need no data beyond the repository.
 ## What the tests check
 
 The structures and Strahler stream order must match the stored outputs cell
-for cell. Drainage area and longest upstream path are allowed a floating-point
+for cell. Drainage area and flow length upstream are allowed a floating-point
 tolerance, because summation order at a confluence differs between methods.
 The tests also check that every ordering, layering and safe manner agrees on
 the same input, that only the conflict-free downstream layering has zero

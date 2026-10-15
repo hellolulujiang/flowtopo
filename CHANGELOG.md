@@ -1,5 +1,25 @@
 # Changelog
 
+## 1.0.7 (2026-10-15)
+
+The results do not change.
+
+* **Documentation: the three drainage attributes are named as in the FlowTopo paper**: flow length downstream
+  (`distance_to_outlet`), flow length upstream (`longest_upstream_path`) and Strahler stream order
+  (`strahler_order`), in place of "distance to (the) outlet", "longest upstream path", "upstream flow length" and
+  "Strahler order". The function names stay.
+* **The example notebook run again.** Its stored outputs dated from 0.1.0 and were never refreshed after the
+  partition was rewritten in 1.0.4: the subbasin partition of the bundled basin is now loads 23,487, 23,107,
+  23,107 and 23,108 cells (imbalance 1.01) with a mainstem of 623 cells, where the stored output showed four
+  equal loads and a mainstem of 949. Every other output is unchanged; the plot titles use the names above. The
+  notebook now says that the conflict count is of extra writes to a shared receiver (not of receivers), that the
+  flow length upstream agrees bit for bit under every manner, and that `example.py` runs from the top folder; the
+  README names what the notebook needs (Jupyter, matplotlib). The user guide points to the basin and region map of
+  FullBasin version 1.0 for the MERIT Hydro tiles of a region (the section it named is no longer on the site).
+* **`FLOWTOPO_METIS_LIBRARY` refuses a METIS 5.1 library.** METIS 5.2 moved the seed, contiguity and imbalance
+  options (9, 13 and 18; 8, 11 and 16 in 5.1), so a 5.1 library took them as other options without an error. A 5.2
+  library is told apart by `METIS_CacheFriendlyReordering`, which 5.1 does not have.
+
 ## 1.0.6 (2026-10-14)
 
 The package brought in line with the C code as it now stands. The orderings, the layerings and the partition of the

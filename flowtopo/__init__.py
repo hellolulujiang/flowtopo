@@ -9,15 +9,15 @@ correct at all.  This package builds eight representations of the same network
 * three parallel layerings: as-soon-as-possible, conflict-free downstream, and
   as-late-as-possible,
 
-then runs four kernels over them -- upstream drainage area, distance to outlet,
-longest upstream path and Strahler stream order -- under every propagation
+then runs four kernels over them -- upstream drainage area, flow length downstream,
+flow length upstream and Strahler stream order -- under every propagation
 manner each kernel supports, so all of them can be compared on one input.
 
 The conflict-free downstream layering is the piece worth a second look: it
 guarantees that no two cells in one layer share a receiver.  A scatter over a
 layer therefore touches each target exactly once, which makes a plain
 ``a[idx] += v`` correct where it would otherwise silently drop writes, and
-makes Strahler order runnable under push at all.
+makes Strahler stream order runnable under push at all.
 
 Quick start
 -----------
@@ -58,7 +58,7 @@ from .locality import parallel_locality, serial_locality
 from .partition import MAINSTEM, partition
 from .raster import GridHeader, read_geotiff, write_geotiff
 
-__version__ = "1.0.6"
+__version__ = "1.0.7"
 
 __all__ = [
     "FlowTopo",
