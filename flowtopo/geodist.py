@@ -98,11 +98,8 @@ def pixel_length(idxs_ds, ncol, transform, latlon=True):
         dc = np.where(dc > ncol // 2, ncol - dc, dc)
 
     if latlon:
-        # The latitude between the two cell centres: a centre sits at
-        # north + (r + 0.5) * yres.  Until 1.0.5 the
-        # midpoint of the two row edges was taken, half a pixel towards the
-        # first row: on the bundled basin 0.16 m in 82.7 km of the distance to
-        # the outlet, and near a percent on a one-degree grid at 60 N.
+        # The latitude between the two cell centres, as the C code takes it: a
+        # centre sits at north + (r + 0.5) * yres.
         lat = north + ((r0 + r1) / 2.0 + 0.5) * yres
         dy = np.where(dr == 0, 0.0, degree_metres_y(lat) * abs(yres))
         dx = np.where(dc == 0, 0.0, degree_metres_x(lat) * abs(xres))

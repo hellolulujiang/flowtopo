@@ -88,7 +88,7 @@ def read_geotiff(path):
             if abs(factor - 1.0) > 1e-9:
                 raise ValueError(
                     f"{path} is projected in units of {factor:g} m ({src.crs.linear_units!r}); the "
-                    f"lengths and areas here are metres, so the grid has to be reprojected first"
+                    f"lengths here are in metres, so the grid has to be reprojected first"
                 )
         header = GridHeader(
             ncol=src.width, nrow=src.height, dtype=data.dtype.name,

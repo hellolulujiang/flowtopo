@@ -236,7 +236,8 @@ def seq_bfs_from_pit(idxs_ds):
     """Breadth-first ordering with each frontier expanded by several threads.
 
     Same sequence as :func:`flowtopo.core.seq_bfs_from_pit`, built differently:
-    a ring of donors is counted, prefix-summed and written in parallel.  The
+    a ring of donors is counted and written in parallel, with a serial prefix
+    sum between the two.  The
     frontier has to be wide for that to pay, which on a real network it is
     everywhere except the last rings out at the headwaters.
 

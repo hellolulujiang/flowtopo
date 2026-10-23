@@ -729,10 +729,11 @@ def _island_units(
     island; else the unit of every node, the number of units and the pairs
     (island unit, unit of a node of another component near it): per node of the
     island the ``ARCHIPELAGO_NEIGHBOURS`` nearest of its ``ISLAND_PROBES``
-    nearest nodes.  An island that met fewer than that many (dense, or far from
-    everything) takes those nearest to its nodes among the nodes of the other
-    components, but such islands, and the ``ARCHIPELAGO_NEIGHBOURS`` such islands
-    nearest to it.
+    nearest nodes.  An island that met fewer than that many distinct nodes of
+    other components (dense, or far from everything) also takes, per node, the
+    ``ARCHIPELAGO_NEIGHBOURS`` nearest nodes that are not on such islands, and is
+    linked to the ``ARCHIPELAGO_NEIGHBOURS`` such islands nearest to it by
+    centroid.
     """
 
     n = linked.size
@@ -915,10 +916,9 @@ def _absorb_fragments(graph: PartitionGraph, parts: np.ndarray, limit: float) ->
     first, second = graph.edges[:, 0], graph.edges[:, 1]
     n_parts = int(parts.max()) + 1
     moved_nodes = 0
-    # as many rounds as it takes: a fragment that touches only fragments waits for the next round.  (Until
-    # eight rounds at most: fragments more than eight deep were left apart, and the call returned as if
-    # they had joined.)  A round that moves a node joins at least one fragment to a piece that stays, so
-    # the pieces grow fewer and the rounds end; a round that moves nothing is the last.
+    # as many rounds as it takes: a fragment that touches only fragments waits for the next round.  A
+    # round that moves a node joins at least one fragment to a piece that stays, so the pieces grow
+    # fewer and the rounds end; a round that moves nothing is the last.
     while True:
         same = parts[first] == parts[second]
         piece = _components(graph, same)
@@ -1917,8 +1917,9 @@ def _open_rivers(
     target, the heaviest, which it cannot shed, and the heaviest bordering it;
     in the lightest subregion, the heaviest, which it cannot grow around, and the
     heaviest bordering it (as a basin that walls off a piece of land).  A basin
-    heavier than an equal share in a subregion over the target can never be
-    balanced whole, and the heaviest such is then the only one tried.  They are tried the
+    with more than one source in a subregion over the target that is heavier
+    than an equal share times ``imbalance_target`` can never be balanced whole, and the heaviest such is
+    then the only one tried.  They are tried the
     heaviest first, at most ``OPEN_TRIALS``, and a round stops at the first
     that brings the plan within the target.  The best
     has the lowest max/mean, then the least overload (``_overload``: how much

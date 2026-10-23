@@ -14,8 +14,9 @@ routing scheme)
 then reads the saved order instead of working it out again.
 
 This repository is the Python reference implementation with one example
-basin. The structures for the 90 m MERIT Hydro network are on Zenodo
-([Global products](#global-products)). The companion paper (Jiang et al.) has
+basin. The structures for the 90 m MERIT Hydro network are on Zenodo (version
+1.0) and on FullHydro (version 1.1, on FullBasin's new partition); see
+[Global products](#global-products). The companion paper (Jiang et al.) has
 been submitted to Geoscientific Model Development. A ten-minute narrated
 video shows the structures and the three ways of moving a value to its
 receiver: <https://youtu.be/tE5K2wM3TTY>.
@@ -35,7 +36,7 @@ pip install -e ".[speed]"   # adds numba: the threaded kernels need it
 ```
 
 Python 3.10 or newer. Without numba the structures and the serial kernels
-still run, in pure Python; `flowtopo.parallel` raises an error.
+still run, in pure Python; a function of `flowtopo.parallel` raises an error.
 
 ## Quick start
 
@@ -63,7 +64,8 @@ upa = parallel.upstream_area(topo, layering="cfds", manner="push")   # push is s
 ## Example data
 
 `data/dir_example.tif` is the example basin of the paper: 292 rows by 614
-columns at 3 arc-seconds, 93,432 valid cells, 731 km², cut from
+columns at 3 arc-seconds, 93,432 valid cells, 731 km² on the sphere FlowTopo uses by default (729 km² on the WGS84
+ellipsoid), cut from
 [MERIT Hydro](https://doi.org/10.1029/2019WR024873) (Yamazaki et al., 2019)
 and kept under its CC BY-NC 4.0 terms ([`DATA_NOTICE.md`](DATA_NOTICE.md)).
 The GeoJSON files are the basin boundary and the outlet.
@@ -132,6 +134,11 @@ The same methods, run with the C implementation over the 90 m MERIT Hydro networ
 * **MERIT-FullBasin** — the regions they are computed on ([10.5281/zenodo.20344113](https://doi.org/10.5281/zenodo.20344113))
 * **MERIT-FlowTopo code** — the C code, the figure scripts and an archived copy of this package ([10.5281/zenodo.22227621](https://doi.org/10.5281/zenodo.22227621))
 
+Version 1.1 of the eight structures (the three orderings, the three layerings and the two partitions), computed
+with the C implementation on FullBasin's new partition of MERIT Hydro: **FullTopo v1.1**,
+<https://fullhydro.org/downloads/merit-hydro-90m/fullbasin/fulltopo/v1.1/>. This package gives the same
+partitions given what the C programs use (see the [user guide](docs/user-guide.md)).
+
 [![](docs/media/global_orderings.png)](docs/media/global_orderings.png)
 
 *The three serial orderings over the 65 continental regions and in the example basin: (a) topological sort from the sources, (b) breadth-first from the pit, (c) depth-first from the pit.*
@@ -161,11 +168,11 @@ python benchmark.py     # serial vs threaded on synthetic grids
 
 The companion manuscript is *MERIT-FlowTopo v1.0: a reusable computational
 foundation for hyperresolution hydrology on the global 90 m drainage network*
-(Jiang et al., submitted to Geoscientific Model Development); a citation
-file will be added once it appears. Until then cite the code record
+(Jiang et al., submitted to Geoscientific Model Development). Until it
+appears, cite the code record
 [10.5281/zenodo.22227621](https://doi.org/10.5281/zenodo.22227621), or this
-repository with the commit you used; for a downloaded product cite its version
-DOI above.
+repository with the release you used; for a downloaded product cite its
+version.
 
 ## Acknowledgements
 

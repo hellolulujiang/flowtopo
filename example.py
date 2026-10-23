@@ -48,7 +48,7 @@ def timed(call, repeats=3):
 
 
 def count_conflicts(decomp, idxs_ds):
-    """Receivers written more than once inside one layer."""
+    """Extra writes to a shared receiver within a layer, summed over the layers."""
     total = 0
     worst = 0
     for members in decomp:
@@ -90,8 +90,8 @@ def main():
     print(f"  basins          : {topo.nbasins}")
     print(f"  numba           : {'yes' if flowtopo.HAS_NUMBA else 'no (pure python, slow)'}")
 
-    # ---- Stage 1: the eight structures ----------------------------------
-    banner("Stage 1  Building the eight reusable structures")
+    # ---- Stage 1: the six orderings and layerings ----------------------------------
+    banner("Stage 1  Building the six orderings and layerings")
     # the builders themselves: the object keeps what it built, and asking it again would time the lookup
     builders = {
         "dfs": lambda: core.seq_dfs_from_pit(topo.idxs_ds),
@@ -148,8 +148,8 @@ def main():
         conflicts, worst = count_conflicts(decomp, topo.idxs_ds)
         print(f"  {LAYER_LABEL[name]:10s} {decomp.nlayers:8,} "
               f"{conflicts:12,} {worst:12,}")
-    print("\n  Only the conflict-free downstream layering reaches zero, and it")
-    print("  is the only one under which a plain push is safe.")
+    print("\n  The conflict-free downstream layering always reaches zero, and it")
+    print("  is the only one under which a plain push is always safe.")
 
     # ---- Stage 4: the four kernels --------------------------------------
     banner("Stage 4  The four kernels under every manner")
@@ -268,8 +268,8 @@ def main():
               f"{100 * metrics['miss_rate_L3']:9.4f}% "
               f"{'-':>10s}  ({metrics['nlayers']} layers)")
     print("\n  The simulated cache is the machine of the companion paper:")
-    print("  32 KB 8-way L1, 1 MB 16-way L2, 35.75 MB 11-way L3.  This basin")
-    print("  fits inside L3, so the miss rates stay low.")
+    print("  32 KB 8-way L1, 1 MB 16-way L2, 35.75 MB 11-way L3.  The bundled")
+    print("  basin fits inside L3, so its miss rates stay low; a larger grid need not.")
 
     # ---- Stage 6: write --------------------------------------------------
     banner("Stage 6  Writing outputs")

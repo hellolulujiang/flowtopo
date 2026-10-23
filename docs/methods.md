@@ -196,8 +196,9 @@ it, in means); it is kept only when it lowers max/mean by `OPEN_MIN_GAIN`
 overload by that much -- so a basin that lightens one of two equally heavy
 subregions counts. The rounds stop at the target, at a round without such a
 gain, or at four basins. The first basin opened is usually the dominant one
-(always, when it is heavier than an equal share times `imbalance_target`), and
-a further one only a basin that holds the balance up. A tributary is never
+(when it has more than one source and is heavier than an equal share times
+`imbalance_target` it is the only one tried, and opened if that gains enough), and a further one only a basin that
+holds the balance up. A tributary is never
 opened further. Each mainstem cell weighs with the
 tributary that enters it. Above `P_min`, the most upstream mainstem cell where
 a tributary of another subregion enters, the mainstem stays with the
@@ -321,10 +322,7 @@ once and combined with Pythagoras, rather than solving the inverse geodesic
 problem. Over one 90 m cell the two agree far below the resolution of the data.
 
 The latitude at which they are evaluated is the one between the two cell
-centres. Until 1.0.5 it was the midpoint of the two row edges, half a pixel
-towards the first row, as the C code also took it until then: on the bundled basin
-0.16 m in 82.7 km of the flow length downstream and 0.15 m in 98 km of the flow
-length upstream, and near a percent on a one-degree grid at 60 N. The C code and this package changed together.
+centres, as in the C code.
 
 ### `raster`
 
@@ -339,7 +337,7 @@ the members of each layer. `Decomposition` holds that as one flat array of
 cell indices plus the offsets that cut it into layers, so a layer is a
 zero-copy slice, and cells inside a layer stay in ascending index order.
 `reverse_layers` flips a `u2d` layering into a `d2u` one for the
-downstream-propagating kernel.
+flow length downstream kernel.
 
 *Complexity:* O(N log N) to build, one stable sort; O(N) space.
 
@@ -354,7 +352,7 @@ the cache by writing to a result.
 `flowtopo.parallel` compiles the layer traversal with numba `prange`:
 `upstream_area`, `distance_to_outlet` and `longest_upstream_path`, plus
 `seq_bfs_from_pit`, which expands each frontier across threads. Requires
-numba; without it the module raises rather than pretending to use threads.
+numba; without it its functions raise rather than pretending to use threads.
 
 ## Locality metrics
 

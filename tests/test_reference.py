@@ -256,8 +256,8 @@ def test_mainstem_runs_after_its_tributaries(topo):
 
 @pytest.mark.parametrize("nrow, ncol", [
     (180, 360),      # square, one degree each way
-    (180, 720),      # wider than tall
-    (360, 360),      # taller than wide
+    (180, 720),      # taller than wide (1 degree by 0.5)
+    (360, 360),      # wider than tall (0.5 degree by 1)
     (90, 360),       # twice as tall as wide
 ])
 def test_cell_area_matches_the_spherical_formula(nrow, ncol):
@@ -266,8 +266,8 @@ def test_cell_area_matches_the_spherical_formula(nrow, ncol):
     A band of latitude between lat1 and lat2, spanning dlon of longitude, has
     area R^2 * dlon * (sin lat2 - sin lat1). Reading only the pixel width and
     using it for the height as well halves or doubles that on any grid whose
-    pixels are not square, and gets the right answer on the square grid that
-    would catch it.
+    pixels are not square, and gets the right answer on a square grid, which
+    would not catch it.
     """
     radius_km = 6371.0088
     dlat, dlon = 180.0 / nrow, 360.0 / ncol

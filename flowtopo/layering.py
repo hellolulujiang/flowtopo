@@ -81,7 +81,7 @@ class Decomposition:
 def reverse_layers(layers, msk):
     """Flip a u2d layering into a d2u one: ``layer = max_layer - layer``.
 
-    Used by the downstream-propagation kernel, which has to visit a receiver
+    Used by the flow length downstream kernel, which has to visit a receiver
     before its donors instead of after.
     """
     layers = np.ascontiguousarray(layers, dtype=np.int64).reshape(-1)
@@ -89,9 +89,9 @@ def reverse_layers(layers, msk):
     if msk.size != layers.size:            # one mask value per cell
         raise ValueError(f"msk holds {msk.size} values and layers {layers.size}; one each per cell")
     # a cell with no layer (outside the network, or in a cycle, or draining into one) keeps -1: it has
-    # no place in the flipped layering either.  Until 2026-09-22 every cell of the mask was flipped,
-    # so a cycle's -1 became the largest layer and the cells of a two-cell cycle landed in the same
-    # layer, one writing into the other
+    # no place in the flipped layering either.  Flipping every cell of the mask would turn a cycle's -1
+    # into the largest layer, and put the two cells of a two-cell cycle in one layer, one writing into
+    # the other
     scheduled = msk & (layers >= 0)
     lyr_max = int(layers[scheduled].max()) if np.any(scheduled) else -1
     if lyr_max > 2147483647:        # the flipped layers are int32 (2**32 wrapped to 0)

@@ -36,7 +36,7 @@ from flowtopo.synthetic import synthetic_d8
 
 
 def count_conflicts(decomp, idxs_ds):
-    """Receivers written more than once inside one layer."""
+    """Extra writes to a shared receiver within a layer, summed over the layers."""
     total = 0
     for members in decomp:
         ds = idxs_ds[members]

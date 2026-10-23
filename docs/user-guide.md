@@ -26,8 +26,8 @@ pip install -e ".[speed]"   # + numba, for the threaded kernels
 
 The structures and the serial kernels work without numba. The scalar builders
 fall back to pure Python loops, correct but slow on a large grid. The threaded
-kernels do not: `flowtopo.parallel` raises rather than pretending to use
-threads, so install the `speed` extra before running anything below that uses
+kernels do not: a function of `flowtopo.parallel` raises rather than pretending
+to use threads, so install the `speed` extra before running anything below that uses
 it.
 
 ## Five minutes
@@ -80,8 +80,8 @@ when you have one core, and a layering when you have several.
 way, position 0 at a headwater. Which one a kernel needs follows from which way
 its information travels:
 
-* drainage area, flow length upstream and stream order accumulate **upward
-  into** the receiver, so they need `u2d`;
+* drainage area, flow length upstream and stream order pass their values
+  **down into** the receiver, so they need `u2d`;
 * flow length downstream reads **from** the receiver, so it needs `d2u`.
 
 The package picks the right direction for you. You only meet it if you call
@@ -257,7 +257,7 @@ raster; METIS divides a graph according to the order of its nodes), METIS 5.2.1
 (`FLOWTOPO_METIS_LIBRARY`, below), the same `upa` (below) and the default
 options. On regions 5699 (10.7 million network pixels) and 27 (28.3 million, one
 basin opened at subbasin level) every pixel carries the C programs' code at both
-levels (checked 2026-10-14). Without the labels or without METIS 5.2.1 the
+levels. Without the labels or without METIS 5.2.1 the
 subregions differ a little: on region 5699, 99.89 to 99.95 % of the pixels are
 in the same subregion once the subregions are matched, and the subregions can be
 numbered otherwise. The C programs leave the regions of
@@ -357,8 +357,8 @@ What to expect, from three runs of `benchmark.py` on a synthetic
 Drainage-area accumulation is memory-bound, so under 2× on ten threads is
 close to the ceiling for this kernel. Among the always-correct forms, push
 under `cfds` runs about 1.8× faster than pull and needs no adjacency table.
-Pull is slower than the single-threaded sequence here: building and reading
-the upstream table costs more than the threads save.
+Pull is slower than the single-threaded sequence here, even with the upstream
+table built beforehand: reading it costs more than the threads save.
 
 Timings move a few percent between runs and a lot between machines. Treat the
 ratios as the message and the seconds as one laptop's answer.
@@ -434,8 +434,9 @@ against their definitions: an ordering is a topological sort, no cell in a
 layer depends on another cell of the same layer, and in an
 upstream-to-downstream sequence a receiver comes after its donors. All of
 that still holds after clipping a basin out of a region. The tests
-and `example.py` run on Python 3.10, 3.11 and 3.12 on every push; the badge
-at the top of the [README](../README.md) links to the runs.
+and `example.py` run on Python 3.10, 3.11 and 3.12 on every push to `main`
+and every pull request; the badge at the top of the [README](../README.md)
+links to the runs.
 
 ### Three things to know about the structures
 
@@ -517,8 +518,8 @@ From the paper's benchmark of the C implementation on the 90 m network
 
 This package runs numba over numpy on far smaller grids, and the ranking is
 not the same: on 16 million cells, push under `cfds` is the fastest threaded
-form and pull is slower than the serial pass, because building and reading
-the donor table costs more than ten threads save. Run `benchmark.py` on your
+form and pull is slower than the serial pass, because reading the donor
+table costs more than ten threads save. Run `benchmark.py` on your
 machine before choosing; it times upstream drainage area on synthetic grids
 of the side length you give it.
 
@@ -615,7 +616,7 @@ written independently; on the example basin they agree to floating-point
 rounding in the accumulated area. That check has been made on the example
 basin only.
 
-Two things to know when a result here is compared with a downloaded layer:
+Three things to know when a result here is compared with a downloaded layer:
 
 * the released `seq_dfs` raster holds at every cell its position in the
   upstream-to-downstream sequence (the inverse of the list of cells

@@ -125,12 +125,11 @@ class FlowTopo:
         if earth not in geodist.EARTH_MODELS:
             raise ValueError(f"unknown earth model {earth!r}; use one of {geodist.EARTH_MODELS}")
         self.earth = earth
-        # the network is cut to the mask here, once: a cell outside it leaves the network (-1), and a
-        # cell inside it whose receiver is outside becomes a pit.  The orderings, the basins, the partition and
-        # the layerings were built on the whole idxs_ds while the kernels honoured the mask, so a cell outside it
-        # was numbered, labelled a basin and put on a mainstem.  Without a mask the cells of the network are those
-        # with a receiver, and the same cut is made: a cell that drains into a cell off the network is a pit
-        # (until 1.0.5 it kept its link, and its basin was left out of the partition's loads)
+        # the network is cut to the mask here, once, so that the orderings, the basins, the partition, the
+        # layerings and the kernels all see the same network: a cell outside it leaves the network (-1), and a
+        # cell inside it whose receiver is outside becomes a pit.  Without a mask the cells of the network are
+        # those with a receiver, and the same cut is made: a cell that drains into a cell off the network is a
+        # pit, and its basin counts in the partition's loads as any other (a basin of a single cell takes no part)
         if mask is not None:
             mask_array = np.ascontiguousarray(mask, dtype=bool).reshape(-1)
             if mask_array.size != size:
@@ -269,7 +268,7 @@ class FlowTopo:
         upstream area, which is the order of the released MERIT-FlowTopo
         ``seq_dfs`` layer; without it the donors are taken in index order.
         Both are topological orders and every kernel gives the same answer
-        under either.
+        under either, up to the order its floating-point sums are added in.
         """
         if name not in ORDERINGS:
             raise ValueError(f"unknown ordering {name!r}; use one of {ORDERINGS}")
@@ -330,7 +329,7 @@ class FlowTopo:
         """Per-layer member lists of a layering.
 
         ``direction="d2u"`` flips the layering so receivers come before their
-        donors, which the downstream-propagation kernel needs.
+        donors, which the flow length downstream kernel needs.
         """
         # the direction checked as ordering() checks it; any other word was taken as u2d
         if direction not in ("d2u", "u2d"):

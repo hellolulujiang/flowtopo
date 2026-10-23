@@ -267,8 +267,8 @@ def _lup_serial(idxs_ds, seq_u2d, height, mv):
         if ds < 0 or ds == idx:
             continue
         hds = height[ds]
-        # a receiver outside the mask carries the nodata and keeps it; until 2026-09-22 the nodata was
-        # read as "nothing here yet" and the first donor overwrote it
+        # a receiver outside the mask carries the nodata and keeps it: the nodata is not "nothing here
+        # yet", and no donor may overwrite it
         if hds == mv:
             continue
         if hu > hds:

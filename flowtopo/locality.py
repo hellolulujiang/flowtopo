@@ -169,7 +169,7 @@ def _upper_median(values):
 
 
 def _rank_percentile(values, percent):
-    """The value at rank round(percent / 100 * (n - 1)) of the sorted values, as the C code takes a percentile;
+    """The value at rank floor(percent / 100 * (n - 1) + 0.5) of the sorted values, as the C code takes a percentile;
     ``numpy.percentile`` interpolates between two ranks."""
     ordered = np.sort(np.asarray(values))
     rank = int(percent / 100.0 * (ordered.size - 1) + 0.5)
@@ -207,8 +207,7 @@ def serial_locality(seq_d2u, idxs_ds, ncol, elem_bytes=4,
     row_jump = np.abs(np.diff(rows)) > 0
 
     # the read of the receiver: the cells of the sequence that have one (a pit or a cell that drains off the
-    # network reads none), as the C code counts them.  Until 1.0.5 every cell with idxs_ds >= 0 was counted, a
-    # pit with a stride of 0
+    # network reads none), as the C code counts them
     receiver = idxs_ds[seq].astype(np.int64)
     reads = (receiver >= 0) & (receiver != seq)
     ds_stride = np.abs(seq[reads] - receiver[reads])
@@ -276,7 +275,7 @@ def parallel_locality(layers, idxs_ds, msk, ncol, elem_bytes=4,
             gap_hits[layer_index] = 1.0
 
     # the read of the receiver: the cells that have a layer and a receiver other than themselves, as the C
-    # code counts them (until 1.0.5 every masked cell with idxs_ds >= 0, a pit with a stride of 0)
+    # code counts them
     cells = np.nonzero((masked >= 0) & (idxs_ds >= 0) & (idxs_ds != np.arange(idxs_ds.size)))[0]
     ds_stride = np.abs(cells - idxs_ds[cells].astype(np.int64))
 

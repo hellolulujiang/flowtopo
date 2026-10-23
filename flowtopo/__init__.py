@@ -8,6 +8,8 @@ correct at all.  This package builds eight representations of the same network
   pits, and a topological sort from the sources;
 * three parallel layerings: as-soon-as-possible, conflict-free downstream, and
   as-late-as-possible,
+* two spatial partitions: whole basins, and basins opened along their mainstems
+  (subbasin level),
 
 then runs four kernels over them -- upstream drainage area, flow length downstream,
 flow length upstream and Strahler stream order -- under every propagation
@@ -58,7 +60,7 @@ from .locality import parallel_locality, serial_locality
 from .partition import MAINSTEM, partition
 from .raster import GridHeader, read_geotiff, write_geotiff
 
-__version__ = "1.0.7"
+__version__ = "1.1.0"
 
 __all__ = [
     "FlowTopo",

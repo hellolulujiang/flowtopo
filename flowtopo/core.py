@@ -734,8 +734,7 @@ def _layering_cfds(idxs_ds, n_up_in, ncells):
     while done < ncells:
         if curr_sz == 0:
             # The queue drained with cells still unscheduled. What is left sits
-            # in a cycle, or drains into one, and has no layer that satisfies
-            # its dependencies. Leave those at LAYER_NODATA, the same thing the
+            # in a cycle and has no layer that satisfies its dependencies. Leave those at LAYER_NODATA, the same thing the
             # other two layerings do. Sweeping them into one final layer would
             # put a cell and its own receiver in the same layer and break the
             # conflict-free promise this layering exists to keep.

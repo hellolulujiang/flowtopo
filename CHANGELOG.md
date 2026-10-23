@@ -1,5 +1,33 @@
 # Changelog
 
+## 1.1.0 (2026-10-23)
+
+Released with FullTopo v1.1, the structures of MERIT Hydro that the C code computed on FullBasin's new partition
+(<https://fullhydro.org/downloads/merit-hydro-90m/fullbasin/fulltopo/v1.1/>). The results do not change from
+1.0.7.
+
+* **The bundled example is placed where it was cut from MERIT Hydro.** The header of `data/dir_example.tif` gave
+  the cell size as 0.00083333 degree and an origin of (117.40172705, 24.44565888), 1.43 cells west and 0.29 cells
+  north of the excerpt's true place: its D8 codes equal MERIT Hydro's, cell for cell, at rows 72,665 to 72,956 and
+  columns 356,884 to 357,497 of the global grid, whose edges are -180 - 1/2400 + j/1200 and 85 - 1/2400 - i/1200.
+  The header now holds that grid exactly: origin (117.40291666666664, 24.445416666666667), cell 1/1200 degree.
+  `data/outlet_example.geojson` and `data/bsn_example.geojson` were in the same displaced frame and are moved with
+  it: the outlet is the centre of the outlet cell (117.90583333, 24.39666667), every vertex of the outline is a
+  cell corner (the outline rasterised on the grid gives the 93,432 cells of the basin), and the bounding box of the
+  outlet's properties is that of the basin's cells (its east and south values were one cell beyond them). The D8
+  codes are unchanged; the cell areas move by 1e-5 at most (731.039 to 731.046 km2 on the sphere).
+  `tests/test_example_data.py` checks the header, the outlet and the outline against the grid.
+  `tests/reference/expected.npz` keeps the transform it was made with, so its expected outputs stand.
+* **Descriptions brought in line with the code**: the drainage kernels pass their values down into the receiver;
+  the conflict count of `example.py` and `benchmark.py` counts the extra writes to a shared receiver; the threaded
+  pull is slower than the serial pass here even with the upstream table built beforehand; the CFDS layering leaves
+  only the cells of a cycle unscheduled; a percentile is taken at the rank rounded half up; the parallel
+  breadth-first ordering takes its prefix sum serially; without numba the functions of `flowtopo.parallel` raise;
+  the held-back part of the mainstem is the part below the first tributary of another subregion; the tests run on
+  pushes to `main` and on pull requests; two comments on pixel shapes in `tests/test_reference.py` were swapped;
+  a sentence on islands with few neighbours (`partition.py`) is rewritten. The notebook's cells carry no run-time
+  metadata.
+
 ## 1.0.7 (2026-10-15)
 
 The results do not change.
