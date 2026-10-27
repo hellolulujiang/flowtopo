@@ -1,7 +1,6 @@
 """The partitions: the graph algorithm, and the subregions of small networks.
 
-The graph tests reproduce, one by one, cases that went wrong before:
-each fails on the code before its fix.
+The graph tests check load balance, contiguity and deterministic tie rules.
 """
 
 import importlib
@@ -223,7 +222,7 @@ def test_fragments_join_the_part_around_them():
 
 def test_fragments_join_however_deep_they_lie():
     # two heavy ends and a chain of one-node fragments between them, labelled 0, 1, 0, 1, ...: every
-    # fragment joins, one node a side a round (eight rounds left the middle of a chain of 42 apart)
+    # fragment joins, one node a side a round, with no fixed limit on the number of rounds
     for count in (10, 42, 80):
         weights = np.ones(count)
         weights[0] = weights[-1] = 100
@@ -310,11 +309,9 @@ def test_metis_never_leaves_a_part_empty():
     assert np.array_equal(parts, [0, 0, 0, 0, 1]) or np.array_equal(parts, [1, 0, 0, 0, 0])
 
 
-@pytest.mark.unit
 def test_an_empty_part_takes_the_leaf_of_the_tree_grown_by_rising_index():
     # five nodes of one weight in one part.  The breadth-first tree from node 0, a node's neighbours by
-    # rising index, is 0-2, 2-1, 2-3, 1-4; its leaves are 3 and 4, and the empty part takes 3, as in the
-    # FlowTopo C code.  (Left to SciPy's own order the tree was 0-2, 2-3, 2-1, 3-4 and the node 1.)
+    # rising index, is 0-2, 2-1, 2-3, 1-4; its leaves are 3 and 4, and the empty part takes 3
     graph = partition.PartitionGraph(
         np.ones(5, dtype=np.int64), np.zeros(5), np.arange(5, dtype=np.float64),
         np.array([(0, 2), (1, 2), (1, 4), (2, 3), (3, 4)], dtype=np.int32), np.ones(5, dtype=np.int64))
@@ -322,9 +319,8 @@ def test_an_empty_part_takes_the_leaf_of_the_tree_grown_by_rising_index():
     assert np.array_equal(parts, [0, 0, 0, 1, 0])
 
 
-@pytest.mark.unit
 def test_a_hint_that_is_no_part_does_not_count():
-    # the second node has no hint (-1): it was read as the last part and turned the labels round
+    # the second node has no hint (-1), so it must not count towards the last part
     parts = np.array([0, 0, 1], dtype=np.int32)
     weights = np.array([1, 5, 2], dtype=np.int64)
     assert np.array_equal(partition._align_labels(parts, weights, np.array([0, -1, 1]), 2), [0, 0, 1])
@@ -488,7 +484,7 @@ def test_a_merged_tributary_keeps_its_mainstem_cells():
     loads = np.bincount(
         parts, weights=weights + partition._mainstem_weights(stem, position, p_min), minlength=4
     )
-    # it follows basin 0 into the trunk, its 80 cells with it (they were lost: 1.75)
+    # it follows basin 0 into the trunk, its 80 mainstem cells with it
     assert parts[1] == parts[0] and p_min[0] >= 80
     assert loads.max() / loads.mean() < 1.15
 
@@ -707,7 +703,7 @@ def test_an_archipelago_is_divided_by_proximity():
 
 
 def test_a_basin_of_a_single_cell_takes_no_part():
-    # as the C code and FlowTopo 1.0: the pit at (0, 4), which nothing flows into, keeps -1 and no load
+    # the pit at (0, 4), which nothing flows into, keeps -1 and no load
     d8 = np.full((3, 9), D8_NODATA, dtype=np.uint8)
     d8[:, 0:3] = 1
     d8[:, 3] = 0
@@ -768,8 +764,7 @@ def test_a_basin_without_tributaries_stays_whole_and_apart():
 def test_a_basin_that_touches_only_the_mainstem_is_joined_across_it():
     # (2,5) and (3,5) are a basin whose only neighbour, (1,5), is a mainstem cell
     # of the right basin; the tributary (0,8) is the one that cell weighs with.
-    # (Until 1.0.5 the basin was (2,5) alone; a basin of a single cell now
-    # takes no part, as in the C code, so it has a second cell below.)
+    # The basin needs both cells: a basin of a single cell takes no part.
     code = {".": D8_NODATA, "S": 4, "E": 1, "N": 64, "o": 0}
     rows = ["........S", ".S.S.EEES", "EEEo.o.Eo", ".....N..."]
     topo = build([[code[c] for c in row] for row in rows])
@@ -824,8 +819,8 @@ def test_unsigned_labels_above_two_to_the_63_keep_their_order(monkeypatch):
 
 
 def test_a_metis_library_is_called_in_place_of_pymetis(monkeypatch):
-    """The partition calls the library _metis_library gives, with the C code's
-    arguments, and not pymetis (a stand-in library: no METIS is needed)."""
+    """The partition passes its seed, imbalance and contiguity options to the
+    selected library (a stand-in library: no METIS is needed)."""
     import ctypes
 
     calls = []
@@ -860,7 +855,7 @@ def test_a_metis_library_is_called_in_place_of_pymetis(monkeypatch):
 
 def test_the_metis_library_named_divides_as_pymetis_does_in_form():
     """With FLOWTOPO_METIS_LIBRARY naming a METIS 5.2.1 built with 32-bit
-    integers and reals (the build the C code links), the partition comes from
+    integers and reals, the partition comes from
     it; skipped where no such library is named."""
     import os
 

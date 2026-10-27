@@ -1,6 +1,6 @@
 """Run every structure, kernel and manner on the bundled example basin.
 
-The Python counterpart of the C code's example.  It
+The script
 
 1. reads the D8 grid;
 2. builds the three serial orderings, the three parallel layerings and the
@@ -12,7 +12,7 @@ The Python counterpart of the C code's example.  It
 
     python example.py [--data data/dir_example.tif] [--out out]
 
-The output directory must not hold the files of an earlier run: none is written over.
+The output directory must not hold the files of another run: none is written over.
 """
 
 import argparse

@@ -44,8 +44,8 @@ Which donor of a confluence is taken first is a choice, and there are two:
 * by upstream drainage area, largest first (`seq_dfs_from_pit(idxs_ds, upa)`,
   or `topo.ordering("dfs", upa=upa)`), which puts the main stem straight after
   the outlet and gives it consecutive positions. **This is the order of the
-  released MERIT-FlowTopo `seq_dfs` layer**, as the C code builds it; a sequence taken from the released raster and
-  one taken from the default here are different sequences, even though both are
+  released `seq_dfs` layers of FullTopo v1.1**. A sequence
+  taken from a released raster and one taken from the default here are different, even though both are
   topological orders of the same network.
 
 Every kernel gives the same answer under either, since both are topological
@@ -62,9 +62,8 @@ guarantee: addition is not associative in `float64` either.
 *Complexity:* O(N) time, O(N + E) space.
 
 A cell in a cycle has no place in any of these orders: it is left out of the sequence and marked
-`-1` in the layerings, so a sequence shorter than the valid-cell count is how a cycle shows. The C
-refuses the whole layering there (its conflict-free form returns an error); this package
-leaves the refusal to the caller, who tests `(layers < 0) & mask`. The value such a cell ends with
+`-1` in the layerings, so a sequence shorter than the valid-cell count is how a cycle shows.
+The caller must check for cycles with `(layers < 0) & mask`. The value such a cell ends with
 means nothing, and depends on the traversal: `dfs` and `bfs` start at the pits and never reach the
 cells around a cycle, so it keeps what it started from, while `topo` starts at the sources and the
 push manners of the as-soon-as-possible and conflict-free layerings, which schedule a cell that flows
@@ -162,8 +161,8 @@ no component is that large (an archipelago), METIS divides the components,
 each linked to its nearest. The land
 masses get the subregions so that the heaviest is as light as can be; and each mass is cut by contiguous
 weighted METIS (best of four seeds: pymetis's METIS 5.1.0, or METIS 5.2.1, the
-C programs' version, through `FLOWTOPO_METIS_LIBRARY`). A unit heavier than an equal
-share of its mass is a subregion of its own first, together with the small
+version FullTopo v1.1 was divided with, through `FLOWTOPO_METIS_LIBRARY`).
+A unit heavier than an equal share of its mass is a subregion of its own first, together with the small
 units it cuts off. Boundary units then move from heavier to lighter
 neighbouring subregions until the heaviest is within `imbalance_target`
 (default 1.005) of an equal share, no move helps, or ten moves a node have been
@@ -271,8 +270,7 @@ nodata; a second nodata code can be given for a grid that uses another. A cell
 draining off the grid, into nodata, or nowhere becomes a pit. The columns do
 not wrap: on a grid that spans every longitude, a cell draining across its
 east or west edge becomes a pit as well, and the basin is cut there. Give such
-a network on a window in which it lies whole (the C code works on regions for
-the same reason, and refuses a region out of which a cell drains).
+a network on a window in which it lies whole.
 
 *Origin:* [pyflwdir](https://github.com/Deltares/pyflwdir) (Eilander et al.,
 2021, Deltares).
@@ -306,9 +304,9 @@ layering and by both partitions.
 ### `geodist`
 
 Metres per degree from the WGS-84 series expansion, and the area of a lat-lon
-pixel: on the sphere of radius 6 371 000 m by default (the earth the released
-products are on), or on the WGS84 ellipsoid with `model="wgs84"`
-(`FlowTopo(..., earth="wgs84")`), the exact area of the ellipsoid's zone.
+pixel: on the sphere of radius 6 371 000 m by default, or on the WGS84
+ellipsoid with `model="wgs84"` (`FlowTopo(..., earth="wgs84")`), the exact area
+of the ellipsoid's zone.
 Checked against pyproj: metres per degree agree to 1e-5, the series' own
 accuracy. On the sphere, the cell area matches the closed-form spherical value
 on square and non-square grids alike, and summing a whole-globe grid
@@ -322,7 +320,7 @@ once and combined with Pythagoras, rather than solving the inverse geodesic
 problem. Over one 90 m cell the two agree far below the resolution of the data.
 
 The latitude at which they are evaluated is the one between the two cell
-centres, as in the C code.
+centres.
 
 ### `raster`
 
@@ -366,15 +364,15 @@ rate per level. `parallel_locality` reports, for one layering: intra-layer
 span, gap statistics, cache-line footprint, receiver distance, and the miss
 rate on the flattened layer order, so the two are directly comparable.
 
-The medians are the upper of the two middle values and the percentiles the
-value at the rounded rank, as in the C code whose numbers the paper reports;
+The median is the upper of the two middle values and a percentile the value
+at the rounded rank, the definitions the paper's numbers use;
 the receiver distance is taken over the cells that have a receiver (a pit has
 none).
 
 The reuse interval is the number of accesses between two touches of the same
 cache line, found through a table of 2^20 lines: exact up to 16.7 million
 four-byte cells, and beyond that a line whose slot another line took in
-between counts as new, as in the C code. It is not the reuse distance of the cache literature, which counts
+between counts as new. It is not the reuse distance of the cache literature, which counts
 the distinct lines touched in between and is the LRU stack distance.
 
 The simulator is checked against an LRU written independently: the two agree

@@ -119,9 +119,8 @@ def upstream_area(topo, layering="cfds", manner="push", cell_area=None):
     _require_numba()
     decomp = topo.decomposition(layering, "u2d")
     area = topo.cell_area if cell_area is None else cell_area
-    # the accumulator keeps the type it was given, as the serial kernel does: forcing Float32 here
-    # made a chain that counts cells stop being exact above 2**24, so the threaded answer differed
-    # from the serial one at the outlet of a large basin
+    # keep the input precision, as the serial kernel does: float32 stops counting single cells
+    # exactly above 2**24
     area = np.asarray(area)
     dtype = np.float32 if area.dtype == np.float32 else np.float64
     # one value per cell, flat (a raster-shaped area is taken row by row, as the serial kernel takes it)
@@ -240,14 +239,8 @@ def seq_bfs_from_pit(idxs_ds):
     sum between the two.  The
     frontier has to be wide for that to pay, which on a real network it is
     everywhere except the last rings out at the headwaters.
-
-    On a synthetic 3000 x 3000 network, 9,000,000 cells, 10 threads: 0.093 s
-    including the donor list, against 0.181 s for the serial form in
-    :mod:`flowtopo.core`.  A third of that 0.093 s is the donor list, which is
-    still one serial pass and is now the limiting step.
     """
     _require_numba()
     idxs_ds = _checked_downstream(idxs_ds)
     offsets, donors = _donor_csr(idxs_ds)
     return _bfs_parallel_frontier(idxs_ds, offsets, donors)
-

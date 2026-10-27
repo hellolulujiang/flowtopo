@@ -19,7 +19,7 @@ def _frozen(array):
 
     These arrays are handed out on every call and kept inside the object. If a
     caller wrote to one, every later call would return the damaged array with
-    no sign that anything had happened. Writing now raises instead; take a
+    no sign that anything had happened. Writing raises; take a
     ``.copy()`` if you need to modify one.
     """
     array.flags.writeable = False
@@ -116,12 +116,10 @@ class FlowTopo:
             if self.transform[1] == 0 or self.transform[5] == 0:
                 raise ValueError("the pixel width and height of the transform (terms 1 and 5) must not be 0")
         self.latlon = bool(latlon)
-        # the CRS the grid came with, so that a result written back carries the grid's own and not the
-        # EPSG:4326 the writer used to assume
+        # preserve the grid's CRS when writing a result back
         self.crs = str(crs) if crs else None
-        # which earth the cell areas are on: the sphere of the released products, or the WGS84
-        # ellipsoid the C code computes on by default (smaller at the equator, larger
-        # past about 35 degrees)
+        # cell areas use the sphere by default, or the WGS84 ellipsoid (smaller at the equator,
+        # larger past about 35 degrees)
         if earth not in geodist.EARTH_MODELS:
             raise ValueError(f"unknown earth model {earth!r}; use one of {geodist.EARTH_MODELS}")
         self.earth = earth
@@ -265,8 +263,8 @@ class FlowTopo:
         headwater); the two are reverses of each other.
 
         ``upa`` (depth-first only) takes the donors of a cell largest first by
-        upstream area, which is the order of the released MERIT-FlowTopo
-        ``seq_dfs`` layer; without it the donors are taken in index order.
+        upstream area, which is the order of the released ``seq_dfs`` layers
+        of FullTopo v1.1; without it the donors are taken in index order.
         Both are topological orders and every kernel gives the same answer
         under either, up to the order its floating-point sums are added in.
         """
@@ -331,7 +329,7 @@ class FlowTopo:
         ``direction="d2u"`` flips the layering so receivers come before their
         donors, which the flow length downstream kernel needs.
         """
-        # the direction checked as ordering() checks it; any other word was taken as u2d
+        # check the direction as ordering() checks it
         if direction not in ("d2u", "u2d"):
             raise ValueError("direction must be 'd2u' or 'u2d'")
         key = f"dd_{name}_{direction}"
@@ -342,7 +340,7 @@ class FlowTopo:
                 nlayers = None
             decomposition = Decomposition.from_layers(layers, nlayers)
             # the cells and the offsets are handed out as they are, so they are read-only like every
-            # other cached array: writing to them changed every later call with no sign
+            # other cached array: writing to them would change every later call with no sign
             decomposition.cells = _frozen(decomposition.cells)
             decomposition.offsets = _frozen(decomposition.offsets)
             self._cache[key] = decomposition
@@ -426,10 +424,7 @@ class FlowTopo:
         if manner is None:
             manner = "serial" if seq is not None else (
                 "push" if layering == "cfds" else "pull")
-        # the cells the order is computed on are the object's mask,
-        # and of those the channel cells when a channel mask is given.  The
-        # object's mask was left out when no channel mask was given, so a cell
-        # outside it still counted as a tributary.
+        # compute only on the object's mask, restricted to channel cells when a channel mask is given
         cells = np.asarray(self.mask, dtype=bool)
         if channel_mask is not None:
             cells = cells & core._checked_cells("channel_mask", channel_mask, self.idxs_ds.size, bool)

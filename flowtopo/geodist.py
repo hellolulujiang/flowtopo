@@ -7,7 +7,7 @@ GDAL GeoTransform: ``(x_origin, pixel_w, rot_x, y_origin, rot_y, pixel_h)``.
 import numpy as np
 
 EARTH_RADIUS_M = 6371000.0
-"""The sphere the released MERIT-FlowTopo and MERIT-DrainAttr areas are on."""
+"""The radius in metres of the sphere of the default cell areas."""
 
 WGS84_A = 6378137.0
 WGS84_F = 1.0 / 298.257223563
@@ -49,10 +49,9 @@ def _wgs84_zone(lat_rad):
 def cell_area_m2(lat, xres, yres, model="sphere"):
     """Area of one lat-lon pixel, in square metres.
 
-    ``model="sphere"`` is the sphere of radius 6 371 000 m the released products are on, and
-    ``"wgs84"`` the exact zone of the WGS84 ellipsoid, which is what the C code computes by
-    default.  The ellipsoid's cell is 0.45 per cent smaller at the equator and 0.56 per cent larger
-    at 60 degrees: the difference changes sign with latitude.
+    ``model="sphere"`` uses a sphere of radius 6 371 000 m, and ``"wgs84"`` the exact zone of
+    the WGS84 ellipsoid. The ellipsoid's cell is 0.45 per cent smaller at the equator and
+    0.56 per cent larger at 60 degrees: the difference changes sign with latitude.
     """
     if model not in EARTH_MODELS:
         raise ValueError(f"unknown earth model {model!r}; use one of {EARTH_MODELS}")
@@ -92,13 +91,12 @@ def pixel_length(idxs_ds, ncol, transform, latlon=True):
     dr = np.abs(r1 - r0)
     dc = np.abs((ds % ncol) - (idx % ncol))
     # on a geographic grid that spans the whole globe the step across
-    # the antimeridian is the short way round, as the C code takes it
-    # (1 column, not 359)
+    # the antimeridian is the short way round (1 column, not 359)
     if latlon and abs(ncol * xres) > 359.9:
         dc = np.where(dc > ncol // 2, ncol - dc, dc)
 
     if latlon:
-        # The latitude between the two cell centres, as the C code takes it: a
+        # The latitude between the two cell centres: a
         # centre sits at north + (r + 0.5) * yres.
         lat = north + ((r0 + r1) / 2.0 + 0.5) * yres
         dy = np.where(dr == 0, 0.0, degree_metres_y(lat) * abs(yres))

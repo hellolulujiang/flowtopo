@@ -60,7 +60,7 @@ from .locality import parallel_locality, serial_locality
 from .partition import MAINSTEM, partition
 from .raster import GridHeader, read_geotiff, write_geotiff
 
-__version__ = "1.1.0"
+__version__ = "1.1.1"
 
 __all__ = [
     "FlowTopo",
@@ -85,7 +85,6 @@ __all__ = [
     "parallel_locality",
     "partition",
     "rank_to_pit",
-    "read_geotiff",
     "read_geotiff",
     "reverse_layers",
     "seq_bfs_from_pit",

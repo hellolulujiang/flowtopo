@@ -46,7 +46,7 @@ def _checked_downstream(idxs_ds):
     """The downstream indices as int32, checked on the type they came in.
 
     Every public function of this module and of kernels takes its indices through this: the cast to int32
-    wraps round (2**32 became cell 0, a receiver that exists) and a float was truncated.
+    wraps round (2**32 becomes cell 0, a receiver that exists) and truncates a float.
     A value must be a whole number in -1 .. size - 1, and the grid no larger than int32 counts.
     """
     given = np.ascontiguousarray(idxs_ds)
@@ -91,11 +91,11 @@ def _as_d8_codes(dir_flat, nodata=None):
     """The grid as uint8 codes, its nodata as D8_NODATA.
 
     The nodata is found on the grid's own type before the cast: a UInt16 grid
-    whose nodata is 65535 turned it into 255, a valid terminal, and a value
-    outside 0..255 wrapped round into some code.  A NaN
+    whose nodata is 65535 would turn it into 255, a valid terminal, and a value
+    outside 0..255 would wrap round into some code. A NaN
     nodata is found with isnan.  Every cell of the nodata becomes D8_NODATA,
-    on a uint8 grid too, so nothing downstream has to exclude the nodata again
-    (the exclusion of int(nodata) took a code away when the nodata was 1.5).
+    on a uint8 grid too, so nothing downstream has to exclude the nodata again.
+    Compare nodata without truncation: int(1.5) would exclude the valid code 1.
     A value that is neither nodata nor a whole number in 0..255 is refused.
     """
     raw = np.asarray(dir_flat).ravel()
@@ -538,7 +538,7 @@ def _seq_dfs_sorted(idxs_ds, upa):
         donors[delta[ds] + fill[ds]] = i
         fill[ds] += 1
 
-    # insertion sort by descending area, the C's; the donors were filled in ascending index order and
+    # insertion sort by descending area; the donors were filled in ascending index order and
     # the sort is stable, so donors of equal area keep the smaller index first
     for i in range(size):
         count = fill[i]
@@ -583,12 +583,10 @@ def seq_dfs_from_pit(idxs_ds, upa=None):
 
     ``upa`` takes the donors of a cell largest first by upstream area instead
     of by index, which puts the main stem straight after the outlet and gives
-    it consecutive positions.  **That is the order of the released
-    MERIT-FlowTopo ``seq_dfs`` layer**, as the C code builds it; without
-    ``upa`` the donors are taken in
-    index order, which is a valid topological order too and is what every
-    kernel here has always used.  The areas are taken as float32, as the
-    released layer holds them.  Any kernel gives the same answer under
+    it consecutive positions. This is the rule of the released ``seq_dfs``
+    layers of FullTopo v1.1. Without ``upa`` the donors are
+    taken in index order. Areas are read as float32; equal areas take the
+    smaller cell index first. Any kernel gives the same answer under
     either, up to the order floating-point sums are added in, since both are
     topological orders: as returned (d2u) a receiver
     comes before its donors, which the flow length downstream takes; reversed
@@ -602,10 +600,8 @@ def seq_dfs_from_pit(idxs_ds, upa=None):
         upa = np.ascontiguousarray(upa, dtype=np.float32).reshape(-1)
         if upa.size != idxs_ds.size:
             raise ValueError("upa does not match the grid")
-        # every cell of the network needs a finite, positive area, as
-        # the C code asks: a NaN stops the insertion sort
-        # half way and an infinity (a no-data of 1.79e308 cast to float32)
-        # goes first, and the order is no longer the larger area first
+        # every network cell needs a finite, positive area: a NaN interrupts the insertion sort,
+        # and an infinity (a no-data of 1.79e308 cast to float32) would go first
         network_upa = upa[idxs_ds >= 0]
         if network_upa.size and not np.all(np.isfinite(network_upa) & (network_upa > 0)):
             raise ValueError("upa holds a value that is not a finite, positive area on a cell of the network")

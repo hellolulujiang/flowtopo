@@ -99,7 +99,7 @@ def _simulate_lru(seq, idxs_ds, elem_bytes, capacity_lines, n_ways, array_offset
 
 
 def _check_elem_bytes(elem_bytes):
-    """An element of no size has no cache line; the C code's parallel measure refuses it too."""
+    """An element must have a positive size to occupy a cache line."""
     if int(elem_bytes) <= 0:
         raise ValueError("elem_bytes must be positive, got %r" % (elem_bytes,))
     return int(elem_bytes)
@@ -119,8 +119,8 @@ def miss_rates(seq, idxs_ds, elem_bytes=4, levels=("L1", "L2", "L3")):
 
 
 def _cache_line_of(indices, elem_bytes):
-    """The cache line each element sits on: its first byte over the line size, which is the C code's
-    rule.  Dividing the index by "elements per line" is the same thing only when the element
+    """The cache line each element sits on: its first byte over the line size.
+    Dividing the index by "elements per line" is the same thing only when the element
     size divides 64: with three-byte elements, 20 and 21 start in line 0 and 1 by that formula and in
     line 0 and 0 by this one."""
     if elem_bytes <= 0:
@@ -133,7 +133,7 @@ _REUSE_TABLE_SLOTS = 1 << 20
 
 @njit(cache=True)
 def _reuse_intervals(cell_lines):
-    """Accesses between two touches of the same cache line, as the C code measures them.
+    """Accesses between two touches of the same cache line.
 
     This is the reuse interval, not the reuse distance of the cache literature: that one counts how many
     *distinct* lines were touched in between (the LRU stack distance); this counts accesses, which is cheaper
@@ -142,8 +142,7 @@ def _reuse_intervals(cell_lines):
     The last access of a line is kept in a table of 2**20 slots, one line a slot (the line's number modulo the
     table): a line whose slot was taken by another line in between has lost its last access, and its next
     access counts as a first one.  On a grid of fewer than 2**20 lines (16.7 million four-byte cells) no two
-    lines share a slot and every reuse is counted; beyond that some are missed, as in the C code, whose numbers
-    the companion paper reports."""
+    lines share a slot and every reuse is counted; beyond that some are missed."""
     count = cell_lines.size
     intervals = np.empty(count, dtype=np.int64)
     found = 0
@@ -162,14 +161,14 @@ def _reuse_intervals(cell_lines):
 
 
 def _upper_median(values):
-    """The middle value of the sorted values, the upper of the two when their number is even: the C code's
-    median (sorted[n // 2]).  ``numpy.median`` averages the two."""
+    """The middle sorted value, the upper of the two when their number is even (sorted[n // 2]).
+    ``numpy.median`` averages the two."""
     ordered = np.sort(np.asarray(values))
     return ordered[ordered.size // 2]
 
 
 def _rank_percentile(values, percent):
-    """The value at rank floor(percent / 100 * (n - 1) + 0.5) of the sorted values, as the C code takes a percentile;
+    """The sorted value at rank floor(percent / 100 * (n - 1) + 0.5);
     ``numpy.percentile`` interpolates between two ranks."""
     ordered = np.sort(np.asarray(values))
     rank = int(percent / 100.0 * (ordered.size - 1) + 0.5)
@@ -207,16 +206,15 @@ def serial_locality(seq_d2u, idxs_ds, ncol, elem_bytes=4,
     row_jump = np.abs(np.diff(rows)) > 0
 
     # the read of the receiver: the cells of the sequence that have one (a pit or a cell that drains off the
-    # network reads none), as the C code counts them
+    # network reads none)
     receiver = idxs_ds[seq].astype(np.int64)
     reads = (receiver >= 0) & (receiver != seq)
     ds_stride = np.abs(seq[reads] - receiver[reads])
 
     reuse = _reuse_intervals(_cache_line_of(seq, elem_bytes))
 
-    # the medians and percentiles are order statistics, as in the C code (the upper of two middle values; the
-    # value at the rounded rank), not numpy's interpolated ones.  Without a reuse the interval is the length of
-    # the sequence, as in the C code
+    # medians use the upper of two middle values; percentiles use the rounded rank.
+    # Without a reuse the interval is the length of the sequence
     out = {
         "stride_mean": float(stride.mean()) if stride.size else 0.0,
         "stride_median": float(_upper_median(stride)) if stride.size else 0.0,
@@ -268,14 +266,13 @@ def parallel_locality(layers, idxs_ds, msk, ncol, elem_bytes=4,
             gap_medians[layer_index] = float(_upper_median(gaps))
             # two consecutive cells share a cache line when they have the same line number, not when
             # their indices are within one line's worth of each other: with 16 elements to a line,
-            # 15 and 16 are one apart and on different lines (the C code's criterion)
+            # 15 and 16 are one apart and on different lines
             lines = _cache_line_of(cells, elem_bytes)
             gap_hits[layer_index] = float((np.diff(lines) == 0).mean())
         else:
             gap_hits[layer_index] = 1.0
 
-    # the read of the receiver: the cells that have a layer and a receiver other than themselves, as the C
-    # code counts them
+    # receiver reads count only cells with a layer and a receiver other than themselves
     cells = np.nonzero((masked >= 0) & (idxs_ds >= 0) & (idxs_ds != np.arange(idxs_ds.size)))[0]
     ds_stride = np.abs(cells - idxs_ds[cells].astype(np.int64))
 

@@ -58,9 +58,8 @@ def _check_manner(manner, allowed):
 
 
 def _checked_nodata(nodata, dtype):
-    """a NaN nodata cannot be told apart by ==, and the cells it marks were summed in; it must be
-    negative, since areas and distances are not, and a nodata of 0 took the zero a distance starts from for a cell
-    outside the mask and skipped the whole network"""
+    """Nodata must be finite and negative: == cannot identify NaN, and areas and distances are not negative.
+    Zero would mark the initial distance of every cell as nodata and skip the whole network."""
     value = float(nodata)
     if np.isnan(value):
         raise ValueError("nodata must be a number, not NaN")
@@ -368,7 +367,7 @@ def _strahler_serial(idxs_ds, seq_u2d, strord, strmax, msk, use_msk):
         if idx_ds < 0 or idx_ds == idx0:
             continue
         # the receiver is tested as well as the cell: an order written into a cell outside the channel
-        # network is an order on a hillslope pixel (the C tests both)
+        # network is an order on a hillslope pixel
         if use_msk and not msk[idx_ds]:
             continue
         sto = strord[idx0]

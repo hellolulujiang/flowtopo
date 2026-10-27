@@ -24,17 +24,17 @@ def test_incomplete_transform_is_rejected_before_indexing(transform):
         FlowTopo(np.array([0]), (1, 1), transform=transform)
 
 
-# ---- 1.1: checked against the C code ----
+# ---- Step lengths, locality statistics and network boundaries ----
 
 def test_a_step_is_measured_at_the_latitude_between_the_two_centres():
     from flowtopo import geodist
     # two cells of one row of a one-degree grid whose top is at 60 N: their centres are at 59.5 N
     length = geodist.pixel_length(np.array([1, 1], dtype=np.int32), 2, (0.0, 1.0, 0.0, 60.0, 0.0, -1.0), True)
     assert length[0] == np.float32(geodist.degree_metres_x(59.5))
-    assert abs(float(length[0]) - 56639.81) < 0.5          # 55,799.98 m at 60 N, the row's edge (until 1.0.5)
+    assert abs(float(length[0]) - 56639.81) < 0.5          # 55,799.98 m at 60 N, the row's edge
 
 
-def test_locality_statistics_are_the_c_codes_order_statistics():
+def test_locality_statistics_are_the_reference_order_statistics():
     from flowtopo import locality
     idxs_ds = np.array([2, 2, 2], dtype=np.int32)          # two cells drain into cell 2, a pit
     out = locality.serial_locality(np.array([2, 0, 1], dtype=np.int32), idxs_ds, ncol=3, levels=())
@@ -54,7 +54,7 @@ def test_a_cell_draining_off_the_network_is_a_pit_with_or_without_a_mask():
     implicit = flowtopo.FlowTopo(np.array([1, -1], dtype=np.int32), (1, 2))
     explicit = flowtopo.FlowTopo(np.array([1, -1], dtype=np.int32), (1, 2), mask=np.array([True, False]))
     assert np.array_equal(implicit.idxs_ds, explicit.idxs_ds) and list(implicit.idxs_ds) == [0, -1]
-    # the one cell is a basin of a single cell, which takes no part in the partition (as the C code)
+    # the one cell is a basin of a single cell, which takes no part in the partition
     assert list(implicit.partition(1)[1]) == list(explicit.partition(1)[1]) == [0]
     assert list(implicit.partition(1)[0]) == list(explicit.partition(1)[0]) == [-1, -1]
 
@@ -88,7 +88,7 @@ def test_masked_donor_tables_are_not_shared_between_calls():
     assert topo.upstream()[1][3] == 2
 
 
-# ---- 1.1, continued ----
+# ---- Mainstem ties, partition inputs and threaded array shapes ----
 
 def test_the_mainstem_takes_the_larger_upa_of_two_equal_tributaries_when_given():
     p = importlib.import_module("flowtopo.partition")   # flowtopo.partition itself is the function
@@ -96,7 +96,7 @@ def test_the_mainstem_takes_the_larger_upa_of_two_equal_tributaries_when_given()
     table, n_up = topo.upstream()
     upstream = np.array([1.0, 0.0, 1.0, 3.0])
     mask = np.asarray(topo.mask)
-    # two one-cell donors, 0 and 2: the C code takes the larger MERIT upa first (cell 2, a row further south)
+    # two one-cell donors, 0 and 2: the larger MERIT upa wins (cell 2, a row further south)
     upa = np.array([0.00431728, 0.0, 0.00431739, 0.0129], dtype=np.float32)
     assert list(p._mainstem(topo.idxs_ds, 3, upstream, table, n_up, mask, upa)) == [3, 2]
     assert list(p._mainstem(topo.idxs_ds, 3, upstream, table, n_up, mask)) == [3, 0]

@@ -247,31 +247,33 @@ memory bandwidth saturated.
 cell of a basin of a single cell, and `flowtopo.MAINSTEM` (-2) on a mainstem
 cell held back to the second stage. A basin of a single cell (a pit that
 nothing flows into, mostly on a coast) takes no part in the partition and is in
-no load, as in v1.0 and in the C programs.
+no load.
 
-The C programs write the partition per MERIT Hydro region. This package gives
-the subregions of the current C programs (not those of the released 1.0
-partitions, see below), pixel for pixel, when it is given what they use: the
-basins numbered as FlowDivide numbers them (`basins=`, the region's `bsn`
-raster; METIS divides a graph according to the order of its nodes), METIS 5.2.1
-(`FLOWTOPO_METIS_LIBRARY`, below), the same `upa` (below) and the default
-options. On regions 5699 (10.7 million network pixels) and 27 (28.3 million, one
-basin opened at subbasin level) every pixel carries the C programs' code at both
-levels. Without the labels or without METIS 5.2.1 the
-subregions differ a little: on region 5699, 99.89 to 99.95 % of the pixels are
-in the same subregion once the subregions are matched, and the subregions can be
-numbered otherwise. The C programs leave the regions of
-island groups (ids from 10000 up) whole; `n_parts=1` does the same here.
+The subregions depend on the basin labels (`basins=`): METIS divides a graph
+according to the order of its nodes. They also depend on the METIS build and,
+at a tie between tributaries with as many cells, on `upa` (below).
+FullTopo v1.1 was divided with FullDivide v1.1's basin ids (the region's `bsn`
+raster), MERIT Hydro's `upa` and METIS 5.2.1. Without the labels or without
+METIS 5.2.1, on region 5699, 99.89 to 99.95 % of the pixels are in the same
+subregion once the subregions are matched, and the subregions can be numbered
+otherwise.
 
-METIS: by default the one pymetis carries, METIS 5.1.0, which divides the same
-graph with the same seed and options otherwise than METIS 5.2.1, the version
-the C programs link. To use 5.2.1, build it as a shared library with 32-bit
-integers and 32-bit reals (`#define IDXTYPEWIDTH 32` and `#define
-REALTYPEWIDTH 32` in `metis.h`, as the C programs' build has them) and name the
-library in the environment variable `FLOWTOPO_METIS_LIBRARY`; the package then
-calls its `METIS_PartGraphKway` through `ctypes` with the arguments the C
-programs give it. A library built with 64-bit integers is refused when it is
-loaded; the width of the reals cannot be checked, so build it as said.
+FullTopo v1.1 leaves regions 10001 and up (the island groups and the two
+regions across 180 degrees) whole, one subregion each. Use `n_parts=1` to keep
+such a region in one subregion here.
+
+By default the package uses pymetis's METIS 5.1.0, which divides the same graph
+with the same seed and options otherwise than METIS 5.2.1. To use 5.2.1, build
+it as a shared library with 32-bit integers and 32-bit reals
+(`#define IDXTYPEWIDTH 32` and `#define REALTYPEWIDTH 32` in `metis.h`). Set
+`FLOWTOPO_METIS_LIBRARY` to its path; the package calls `METIS_PartGraphKway`
+through `ctypes`. The loader checks for METIS 5.2 and 32-bit integers, and
+refuses a 5.1 library or a build with 64-bit integers. The real width cannot be
+checked, so build it with 32-bit reals.
+
+`basins` must be on the grid of `topo`, for example FlowDivide's basin raster
+of the same window the flow directions were read from. `upa` must be the
+upstream area of that grid.
 
 ```python
 import numpy as np, rasterio
@@ -281,55 +283,53 @@ with rasterio.open("bsn_region_005699_3s.tif") as src:   # FlowDivide's basin id
 part, load = topo.partition(4, "subbasin", basins=bsn, upa=upa)
 ```
 
-They write it as
-`100 × region_id + 1 … 4` for the subregions, `100 × region_id + 5` for the
-held-back mainstem, `0` off the network. Two balances are reported: at subbasin
-level (and in choosing the basins to open) the largest subregion's cell count
-over the mean of the four, the mean taken as at least one cell (the first stage
-only; the held-back mainstem is not counted); the C basin-level step writes the
-largest over the smallest into its marker, `inf` when a subregion is empty.
+FullTopo v1.1 stores `100 × region_id + k` for subregion `k` (1 … 4),
+`100 × region_id + 5` for the held-back mainstem, and `0` off land and in a
+single-pixel outlet. The package returns indices starting at 0 instead.
+Its balance measure is the largest subregion's cell count over the mean of
+the subregions, with the mean taken as at least one cell. It uses this measure
+to choose the basins to open. The loads count the first stage only; the
+held-back mainstem is not counted.
+
 Both levels put contiguity first and balance second: on its land every
 subregion is one piece, the two banks of a held-back mainstem counting as
-touching, and the islands are added to the subregions of nearby land. Land is the largest components of the network, at most one per
-subregion (those of at least half an equal share, and the next largest when
-these are too few to be cut into every subregion); every other component goes
-as an island with the subregion of its nearest land, and the refinement may move
+touching, and the islands are added to the subregions of nearby land.
+Land comprises the largest components of the network, at most one per
+subregion: those of at least half an equal share, and the next largest when
+these are too few to be cut into every subregion. Every other component goes
+as an island with the subregion of its nearest land. The refinement may move
 it whole to another subregion nearby.
-With `level="basin"` every
-basin stays whole, so one dominant basin leaves the other processors idle. The
+
+With `level="basin"` every basin stays whole, so one dominant basin leaves the
+other processors idle. The
 bundled example is a single basin, so it shows this directly: basin-level gives
 `[93432, 0, 0, 0]`, subbasin-level `[23487, 23107, 23107, 23108]`.
 
-`level="subbasin"` opens as few basins as the balance needs -- the dominant
-one first, another only where it holds the balance up and clearly pays off --
-along their mainstems, found by walking upstream from the outlet and taking at
-each confluence the tributary with the most cells upstream, into the tributary
-subtrees that drain into them; a tributary is not opened further. (This mainstem
-goes by cells; the main stem the `dfs` ordering puts first when given `upa` goes
-by upstream area. The two can part where a tributary with fewer cells drains more
-area.)
+`level="subbasin"` opens as few basins as the balance needs, at most four.
+It opens the dominant one first, and another only where it holds the
+balance up and clearly pays off. Each is opened along its mainstem into the
+tributary subtrees that drain into it; a tributary is not opened further.
+The mainstem is found by walking upstream from the outlet and taking at each
+confluence the tributary with the most cells upstream. This mainstem goes by
+cells; the main stem the `dfs` ordering puts first when given `upa` goes by
+upstream area. The two can part where a tributary with fewer cells drains more
+area.
+
 The subtrees and the other basins are divided into subregions, each one piece
 on its land with the islands added, by METIS and balanced by moving units along
-the boundaries. Above `P_min`, the most
-upstream mainstem cell where a tributary of another subregion enters, the
-mainstem stays with the subregion of its most upstream tributaries; from `P_min`
-down, `P_min` included, it depends on several subregions, so it is marked
-`flowtopo.MAINSTEM` and runs in a second stage after they finish. `imbalance_target`, `min_subtree_size`,
+the boundaries. `P_min` is the most upstream mainstem cell where a tributary
+of another subregion enters. Above it the mainstem stays with the subregion
+of its most upstream tributaries. From `P_min` down, `P_min` included, it
+depends on several subregions, so it is marked `flowtopo.MAINSTEM` and runs in
+a second stage after they finish. `imbalance_target`, `min_subtree_size`,
 `seed` and `refine` tune it (see the docstring).
 
 Where two tributaries hold as many cells, the mainstem follows the one with the
 larger upstream area when the area is given (`topo.partition(..., upa=upa)`,
 MERIT Hydro's `upa`, one value a cell), then the one with the smaller cell
-index. The C code decides such a tie the same way, so give the same `upa`
-(finite and positive on every cell of the network) to follow the C code's
-mainstem there; without it only the cell index decides, and a mainstem can end
-in another headwater cell. That is the rule at a tie; what else the C
-programs' subregions need is said above (`basins=`, METIS 5.2.1).
-
-The partitions released in MERIT-FlowTopo were made by the C code with an
-earlier rule, which deals basins and tributary subtrees to the lightest
-subregion without keeping a subregion in one piece; from 1.0.4 this package
-partitions as above.
+index. `upa` must be finite and positive on every cell of the network.
+Without it only the cell index decides, and a mainstem can end in another
+headwater cell.
 
 ## Threads
 
@@ -345,25 +345,11 @@ from flowtopo import parallel
 upa = parallel.upstream_area(topo, layering="cfds", manner="push")
 ```
 
-What to expect, from three runs of `benchmark.py` on a synthetic
-16,000,000-cell network with 10 threads on an Apple M-series laptop:
-
-| form | median s, three runs | speedup |
-| --- | --- | --- |
-| serial ordering, one thread | 0.0854 – 0.0880 | 1.00× |
-| `cfds` layering, push, threads | 0.0505 – 0.0539 | 1.58 – 1.74× |
-| `cfds` layering, pull, threads | 0.0898 – 0.0971 | 0.91 – 0.95× |
-
-Drainage-area accumulation is memory-bound, so under 2× on ten threads is
-close to the ceiling for this kernel. Among the always-correct forms, push
-under `cfds` runs about 1.8× faster than pull and needs no adjacency table.
-Pull is slower than the single-threaded sequence here, even with the upstream
-table built beforehand: reading it costs more than the threads save.
-
-Timings move a few percent between runs and a lot between machines. Treat the
-ratios as the message and the seconds as one laptop's answer.
-
-Run `python benchmark.py` on your own machine.
+On a synthetic network of 16 million cells with 10 threads, push under `cfds`
+ran about 1.6 to 1.7 times as fast as the serial pass, while pull ran no faster
+than serial because reading the donor table costs more than the threads save.
+The kernel is memory-bound. Run `python benchmark.py` on your machine, since
+the timings depend on it.
 
 ## Working with your own rasters
 
@@ -372,11 +358,11 @@ convention: codes are powers of two clockwise from east, 0 and 255 are
 terminals, 247 is nodata. The file's own nodata value is honoured as well,
 which matters because 255 means an endorheic terminal here, not nodata.
 
-For a MERIT Hydro region rather than your own grid, the basin and region
-map of FullBasin version 1.0, <https://fullhydro.org/merit-90m/v1.0/fullbasin/flowdivide/>,
-lists which MERIT Hydro tiles cover each region (pick the region) and its window
-on the global grid. It does not host the tiles; download those
-from their authors.
+For a MERIT Hydro region, the
+[find page](https://fullhydro.org/find/merit-hydro-v1.0.1-90m/fullbasin/)
+gives its window in the global grid and the MERIT Hydro tiles covering it.
+These are the regions of FullDivide v1.1, which FullTopo v1.1 uses. Download
+the tiles from their authors.
 
 Write a result back next to the input:
 
@@ -423,8 +409,7 @@ are powers of two clockwise from east; 0 and 255 are terminals; 247 is always
 nodata, and a nodata value declared in the file is excluded as well.
 
 Work one region or basin at a time. Indices are int32, so a raster must stay
-under 2.1 billion cells, nodata included; the 38° × 38° regions of
-MERIT-FullBasin do.
+under 2.1 billion cells, nodata included; the regions of FullDivide v1.1 do.
 
 ### What the tests check
 
@@ -494,7 +479,7 @@ how the two arrays sit in memory; the ranking does not.
 
 ### Which structure to use
 
-From the paper's benchmark of the C implementation on the 90 m network
+From the paper's benchmark on the 90 m network
 (22.2 billion cells, 65 regions):
 
 * **One pass on one core** — the depth-first ordering. Up to 5.1 times faster
@@ -516,91 +501,29 @@ From the paper's benchmark of the C implementation on the 90 m network
   bandwidth can feed. That number depends on the processor: Fig. 15 of the
   paper shows it for the server tested; measure it on yours.
 
-This package runs numba over numpy on far smaller grids, and the ranking is
-not the same: on 16 million cells, push under `cfds` is the fastest threaded
-form and pull is slower than the serial pass, because reading the donor
-table costs more than ten threads save. Run `benchmark.py` on your
-machine before choosing; it times upstream drainage area on synthetic grids
-of the side length you give it.
+For this package's numba kernels on smaller grids, see [Threads](#threads).
 
 ### Global products
 
-Run with the C implementation over the 90 m MERIT Hydro network, the same
-methods produced two Zenodo records of per-region GeoTIFFs. Both cover the 65
-continental regions of MERIT-FullBasin; the 29 island groups and the two
-regions that straddle the antimeridian are not included.
-
-**MERIT-FlowTopo** ([10.5281/zenodo.20653059](https://doi.org/10.5281/zenodo.20653059))
-holds the structures: for every region the depth-first sequence, the
-conflict-free downstream and as-late-as-possible layerings and the subbasin
-partition; for Region 43 (southern China) all eight, so the alternatives can
-be compared in one region. 978 GB uncompressed, 50 GB compressed.
-
-**MERIT-DrainAttr** ([10.5281/zenodo.20686665](https://doi.org/10.5281/zenodo.20686665))
-holds the kernels run over those structures: flow length downstream, flow
-length upstream and Strahler stream order for every region, and upstream
-drainage area for Region 43 only, since MERIT Hydro already distributes it
-globally. 622 GB uncompressed, 60 GB compressed.
-
-**MERIT-FullBasin** ([10.5281/zenodo.20344113](https://doi.org/10.5281/zenodo.20344113))
-is the companion dataset that divides the network into 96 hydrologically
-independent regions, the 65 continental ones being those above.
-
-**MERIT-FlowTopo code** ([10.5281/zenodo.22227621](https://doi.org/10.5281/zenodo.22227621))
-is the record the paper cites for code: the C implementation that produced
-the two records above, the scripts and data behind every figure, and an
-archived copy of this package (0.1.0, commit c51b93f; renumbered 1.0.0 on
-2026-09-22 with no change to the code).
-
-Four maps over the 65 regions, one per line below. Click a line to open its map.
-
-<details>
-<summary><b>Serial orderings</b>: the sequence index of each ordering, globally and in the example basin</summary>
-
-[![](media/global_orderings.png)](media/global_orderings.png)
-
-*(a) topological sort from the sources, (b) breadth-first from the pit, (c) depth-first from the pit. The topological sort rises smoothly from headwaters to outlets, breadth-first forms bands of equal hop count from the outlet, depth-first breaks the basin into one compact block per tributary. Global maps share one scale from 0 to the total cell count; each basin map is scaled to itself; the red triangle is the outlet. All three are stored upstream to downstream.*
-
-</details>
-
-<details>
-<summary><b>Parallel layerings</b>: the layer index of each layering; only as-late-as-possible fills its layers evenly</summary>
-
-[![](media/global_layerings.png)](media/global_layerings.png)
-
-*(a) as-soon-as-possible, (b) conflict-free downstream, (c) as-late-as-possible. Under (a) and (b) most cells sit in the first few layers and only the main rivers reach high indices, so the global scale is cut at 3,000; (c) spreads the cells over all layers and uses the full range, tens of thousands in the largest basins. The example basin has 949 layers under all three.*
-
-</details>
-
-<details>
-<summary><b>Spatial partitions</b>: every region split four ways, Region 43 before and after the mainstem cut</summary>
-
-[![](media/global_partitions.png)](media/global_partitions.png)
-
-*(a, c) all 65 regions; (b, d) Region 43, subregions 4301 to 4304. Top row basin-level: the dominant basin of Region 43 fills one subregion on its own. Bottom row subbasin-level: the basin is cut along its mainstem (purple) and the four subregions come out balanced. The four colours recur region by region.*
-
-</details>
-
-<details>
-<summary><b>Kernel products</b>: the four MERIT-DrainAttr variables mapped</summary>
-
-[![](media/kernel_products.png)](media/kernel_products.png)
-
-*(a) flow length downstream, km; (b) flow length upstream, km; (c) Strahler stream order on channels draining at least 10 km²; (d) upstream drainage area, km², colour scale cut at 100 km². The red box is the example basin. (d) is released for Region 43 only, since MERIT Hydro distributes it globally.*
-
-</details>
+[FullTopo v1.1](https://fullhydro.org/downloads/merit-hydro-v1.0.1-90m/fullbasin/fulltopo/v1.1/)
+holds eight structures on the 90 regions of
+[FullDivide v1.1](https://fullhydro.org/downloads/merit-hydro-v1.0.1-90m/fullbasin/fulldivide/v1.1/).
+Every region has `seq_dfs`, `lyr_cfds`, `lyr_alap` and `part_subbasin`, with its
+table. Region 43 (southern China) also has `seq_bfs`, `seq_topo`, `lyr_asap` and
+`part_basin`. Every raster has MERIT Hydro's exact grid header, with pixels of
+1/1200 degree. FullTopo holds no drainage attributes. Its partition inputs
+and rules are set out under [Splitting across processors](#splitting-across-processors).
 
 #### Using the released structures
 
 The structures index into the MERIT Hydro flow-direction grid, which is not
 redistributed here: get it from
 <https://global-hydrodynamics.github.io/MERIT_Hydro/> under its own terms.
-Which MERIT Hydro tiles a region needs, and the region's window on the global
-grid, are listed on the basin and region map of FullBasin version 1.0,
-<https://fullhydro.org/merit-90m/v1.0/fullbasin/flowdivide/> (the released
-structures use its regions). Region boxes sit on
-whole degrees and one degree is 1,200 cells, so a region is cut from the
-global rasters by integer arithmetic, with no resampling.
+The [find page](https://fullhydro.org/find/merit-hydro-v1.0.1-90m/fullbasin/)
+gives the MERIT Hydro tiles and the window of a region of FullDivide v1.1,
+whose regions FullTopo v1.1 uses.
+Region boxes sit on whole degrees and one degree is 1,200 cells, so a region
+is cut from the global rasters by integer arithmetic, with no resampling.
 
 You do not need a whole region. Keep any subset of cells: the released
 sequence restricted to them is still a topological sort, and a restricted
@@ -609,12 +532,7 @@ removing cells cannot put a cell before something it depends on, nor make two
 remaining cells depend on each other. A receiver outside the clip becomes an
 outlet when the clip is loaded. Only the kernel values change: upstream drainage
 area on a clip counts the area inside the clip. Clip whole basins when the values
-must match the global ones, or take them from MERIT-DrainAttr.
-
-This package is a port of the C code that produced the release. The two were
-written independently; on the example basin they agree to floating-point
-rounding in the accumulated area. That check has been made on the example
-basin only.
+must match those of the whole region.
 
 Three things to know when a result here is compared with a downloaded layer:
 
@@ -626,12 +544,11 @@ Three things to know when a result here is compared with a downloaded layer:
 * the released `seq_dfs` takes the donors of a confluence by upstream drainage
   area, largest first, and this package takes them by cell index unless it is
   given the area: `topo.ordering("dfs", "u2d", upa=upa)` follows the released
-  rule (the released raster itself, pixel for pixel, only with the same Float32
-  upstream area it was built from). Both are topological orders, and every kernel gives the same answer
+  rule. The sequence depends on the Float32 upstream area it is given.
+  Both are topological orders, and every kernel gives the same answer
   under either, up to the order the floating-point sums are added in;
-* the released cell areas are on the sphere of radius 6 371 000 m, which is
-  what `geodist.cell_area_m2` computes by default; the C code defaults to the
-  WGS84 ellipsoid, so a rerun of the C code gives areas that
-  are 0.45 per cent smaller at the equator and 0.56 per cent larger at 60
-  degrees unless it is told to use the sphere. `FlowTopo(..., earth="wgs84")`
-  computes the ellipsoid's areas here.
+* `geodist.cell_area_m2` computes the areas on the sphere of radius
+  6 371 000 m by default;
+  `FlowTopo(..., earth="wgs84")` computes the ellipsoid's areas, 0.45 per cent
+  smaller at the equator and 0.56 per cent larger at 60 degrees. FullTopo v1.1
+  has no areas.

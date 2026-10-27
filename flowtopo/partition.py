@@ -49,7 +49,7 @@ a subregion near it.  A subregion is never cut in two; the odd piece left apart
 from its subregion joins the one around it.
 
 A basin of a single cell (a pit that nothing flows into, mostly on a coast)
-takes no part, as in the C code: its cell keeps ``-1`` and adds to no load.
+takes no part: its cell keeps ``-1`` and adds to no load.
 METIS is pymetis's unless ``FLOWTOPO_METIS_LIBRARY`` names a METIS shared
 library (:data:`METIS_LIBRARY_VARIABLE`).
 """
@@ -115,11 +115,10 @@ METIS_LIBRARY_VARIABLE = "FLOWTOPO_METIS_LIBRARY"
 """The environment variable that names a METIS shared library to call (through
 ctypes) instead of the METIS that pymetis carries.  pymetis 2025.2.2 carries
 METIS 5.1.0, which divides the same graph with the same seed and options
-otherwise than METIS 5.2.1, the version the C code links (its build script,
-``build_metis_5.2.1.sh``, makes ``libmetis.dylib`` from the same objects);
+otherwise than METIS 5.2.1, the version FullTopo v1.1 was divided with;
 a 5.1 build (conda's 5.1.1) has also stopped on a MERIT Hydro region with a
 fault in its coarsening that 5.2.1 corrects.  The library must be METIS 5.2,
-built with 32-bit integers and 32-bit reals, as that build is: the version and
+built with 32-bit integers and 32-bit reals: the version and
 the integer width are checked when it is loaded, the real width cannot be."""
 
 _METIS_NOPTIONS = 40
@@ -189,10 +188,10 @@ def _metis_library():
 
 
 def _metis_through_library(library, xadj, adjncy, vweights, eweights, n_parts, targets, seed, ufactor, contig):
-    """One METIS_PartGraphKway of the library, with the arguments and options the C code gives it."""
+    """Call METIS_PartGraphKway with the graph, target weights and partition options."""
     n = int(xadj.size - 1)
     if n_parts == 1:
-        return np.zeros(n, dtype=np.int32), 0          # as the C code: one part needs no METIS
+        return np.zeros(n, dtype=np.int32), 0          # one part needs no METIS
     arrays = [np.ascontiguousarray(a, dtype=np.int32) for a in (xadj, adjncy, vweights, eweights)]
     for original, narrowed in zip((xadj, adjncy, vweights, eweights), arrays):
         if not np.array_equal(np.asarray(original, dtype=np.int64), narrowed):
@@ -648,7 +647,7 @@ def _metis_parts(
         return np.arange(graph.size, dtype=np.int32)
     total = float(graph.weights.sum())
     target_load = np.asarray(targets, dtype=np.float64) * total
-    # rounded half up, as the C code's lround: Python's round takes a half to the even number (62.5 -> 62)
+    # rounded half up: Python's round takes a half to the even number (62.5 -> 62)
     ufactor = max(1, int(np.floor((imbalance_target - 1.0) * 1000 + 0.5)))
     best = None
     best_score = None
@@ -697,9 +696,8 @@ def _fill_empty_parts(graph: PartitionGraph, parts: np.ndarray, n_parts: int) ->
         donor = int(np.argmax(np.where(counts > 1, load, -np.inf)))
         members = np.flatnonzero(parts == donor)
         sub = _subgraph(graph, members)
-        # every edge both ways and a node's neighbours by rising index, so that the tree
-        # is the one the FlowTopo C code grows (left to SciPy, an edge stored (a, b) was
-        # followed from a before any edge stored (c, a), and another leaf could come out)
+        # store every edge both ways and visit neighbours by rising index to fix the tree's
+        # leaves independently of how the edges are stored
         both = np.concatenate((sub.edges, sub.edges[:, ::-1]))
         matrix = coo_matrix(
             (np.ones(both.shape[0]), (both[:, 0], both[:, 1])),
@@ -1653,7 +1651,7 @@ def assign_subbasins(
 
 def _nearest(points, queries, k):
     """``(squared distance, index)`` of the ``k`` points nearest each query, in the order of (squared distance,
-    index): of points equally far, the one with the lower index comes first, as in the C code's tree.
+    index): of points equally far, the one with the lower index comes first.
 
     A k-d tree alone leaves the order of equally distant points to its own traversal (regular grids of nodes have
     many), and that order decides which neighbours a node is linked to.  The squared distance is dx * dx + dy * dy
@@ -1664,7 +1662,7 @@ def _nearest(points, queries, k):
     queries = np.asarray(queries, dtype=np.float64).reshape(-1, 2)
     n = points.shape[0]
     k = min(int(k), n)
-    if k <= 0:                                              # no point to find, as the C code returns none
+    if k <= 0:                                              # no point to find
         return np.empty((queries.shape[0], 0), dtype=np.float64), np.empty((queries.shape[0], 0), dtype=np.int64)
     wider = min(n, k + 8)                                   # room for points as far as the k-th
     _, near = cKDTree(points).query(queries, k=wider)
@@ -1696,11 +1694,9 @@ def _mainstem(idxs_ds, pit, upstream, us_table, n_up, mask, upa=None):
     """Cells from a pit up to the head, taking the larger tributary each time.
 
     Of two tributaries with as many cells, the one with the larger ``upa`` when it is given, then the one with the
-    smaller cell index: the C code follows the first child of its depth-first order, whose donors are taken by
-    MERIT Hydro's upstream area, largest first, the smaller index first among equal areas.
+    smaller cell index.
 
-    Only donors inside ``mask`` are followed: the donor table is the
-    whole grid's, and a donor outside the mask was followed onto the stem."""
+    Only donors inside ``mask`` are followed: the donor table covers the whole grid."""
     stem = [int(pit)]
     seen = {int(pit)}
     cell = int(pit)
@@ -2074,16 +2070,15 @@ def partition(
         The heaviest subregion over an equal share that is good enough.
     upa : array of float32, optional
         The upstream area of every cell (MERIT Hydro's ``upa``).  It decides between two tributaries with as many
-        cells when a mainstem is traced, as in the C code, whose depth-first order takes the donors by it; without
-        it the one with the smaller cell index is taken.
+        cells when a mainstem is traced: the larger area wins, then the smaller cell index.
+        Without it only the cell index decides. Areas must be finite and positive on the network.
     basins : array of int, optional
         A label for the basin of every cell: positive on every cell of a basin, one label for each basin and one
         basin for each label; other cells are not read.  FlowDivide's ``bsn`` of the region is one.  The basins are
         the nodes of the graph in the order of their labels, and METIS divides a graph according to the order of
-        its nodes, so it is the labels the C code uses (FlowDivide's), with METIS 5.2.1
-        (:data:`METIS_LIBRARY_VARIABLE`), the same ``upa`` and the default options, that give the C code's
-        subregions to the pixel.  By default the package's own labels (:attr:`FlowTopo.basins`, the pits in the
-        order of the dfs ordering).
+        its nodes. Subregions therefore depend on these labels, the METIS build
+        (:data:`METIS_LIBRARY_VARIABLE`) and, at a tie, ``upa``. By default the package uses its own labels
+        (:attr:`FlowTopo.basins`, the pits in the order of the dfs ordering).
 
     Returns
     -------
@@ -2100,14 +2095,14 @@ def partition(
     Notes
     -----
     A basin of a single cell (a pit that nothing flows into, mostly on a coast)
-    takes no part in the partition and keeps ``-1``, as in the C code and in
-    FlowTopo 1.0: as nodes they would add much to the graph and nothing to the
-    balance.  The C code also leaves the regions off the continents (MERIT
-    Hydro's island regions, numbered 10000 and up) whole; ``n_parts=1`` does
-    the same here.  METIS is pymetis's unless ``FLOWTOPO_METIS_LIBRARY`` names a
-    build of METIS 5.2.1 (:data:`METIS_LIBRARY_VARIABLE`); only with that build,
-    FlowDivide's labels (``basins``) and the same ``upa`` are the subregions the
-    C code's.
+    takes no part in the partition and keeps ``-1``: such nodes would add much
+    to the graph and nothing to the balance. FullTopo v1.1 leaves regions
+    10001 and up (island groups and the two regions across 180 degrees) whole,
+    one subregion each; use ``n_parts=1`` to keep a region in one subregion here.
+
+    METIS is pymetis's unless ``FLOWTOPO_METIS_LIBRARY`` names a build of
+    METIS 5.2.1 (:data:`METIS_LIBRARY_VARIABLE`). FullTopo v1.1 was divided with
+    FullDivide v1.1's basin ids (``bsn``), METIS 5.2.1 and MERIT Hydro's ``upa``.
 
     Cells caught in a cycle have no place in the drainage hierarchy. They get
     the lightest subregion, so that every cell has one, but they do not count
@@ -2126,11 +2121,11 @@ def partition(
         raise ValueError("imbalance_target must be at least 1")
     n_parts = int(n_parts)
     if upa is not None:
-        # compared as the C code compares them, in float32
+        # compare areas in float32
         upa = np.ascontiguousarray(upa, dtype=np.float32).reshape(-1)
         if upa.size != topo.idxs_ds.size:
             raise ValueError(f"upa holds {upa.size} values; the network has {topo.idxs_ds.size} cells")
-        # finite and positive on every cell of the network, as ordering("dfs", upa=) asks and the C code: a NaN is
+        # finite and positive on every cell of the network, as ordering("dfs", upa=) requires: a NaN is
         # neither the largest of the tied tributaries nor equal to it, and none would be left to follow
         network_upa = upa[np.asarray(topo.mask).reshape(-1)]
         if network_upa.size and not np.all(np.isfinite(network_upa) & (network_upa > 0)):

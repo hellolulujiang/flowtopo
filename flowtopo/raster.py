@@ -53,9 +53,8 @@ def read_geotiff(path):
         ) from error
     with src:
         data = src.read(1)
-        # the cells the file's own mask marks invalid (an internal mask or alpha band, not only the
-        # nodata value) become nodata; read(1) returns their stored values, and a 0 there was taken as a real outlet.
-        # With no mask but the nodata value this changes nothing
+        # honour the file's mask (an internal mask or alpha band as well as the nodata value):
+        # read(1) returns stored values, and a masked 0 must not become an outlet
         fill = src.nodata if src.nodata is not None else 247.0
         valid = src.read_masks(1)
         if not valid.all():
@@ -74,8 +73,7 @@ def read_geotiff(path):
         # length and area below would come out in the wrong unit
         if t.b != 0.0 or t.d != 0.0:
             raise ValueError(f"{path} is rotated; this package reads north-up grids")
-        # a geographic CRS is read as degrees only when its angular unit is the degree; one in grads or
-        # radians was taken for degrees and every length and area came out wrong
+        # a geographic CRS must use degrees; reading grads or radians as degrees would give wrong lengths and areas
         if src.crs is not None and src.crs.is_geographic:
             angular_unit_radians = src.crs.units_factor[1] if src.crs.units_factor else 0.0
             if abs(angular_unit_radians - np.pi / 180.0) > 1e-12:
@@ -96,8 +94,7 @@ def read_geotiff(path):
             transform=(t.c, t.a, t.b, t.f, t.d, t.e),
             crs=str(src.crs) if src.crs else "",       # no CRS in, no CRS out
             # a projected grid is not degrees, and reading it as degrees turns a 100 m cell into
-            # 100 degrees; with no CRS at all the file is read as degrees, which
-            # is what every D8 product this package was written for carries
+            # 100 degrees; a file with no CRS is read as degrees
             latlon=bool(src.crs.is_geographic) if src.crs else True,
         )
     return data.ravel(), header
