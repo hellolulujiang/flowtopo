@@ -552,3 +552,139 @@ Three things to know when a result here is compared with a downloaded layer:
   `FlowTopo(..., earth="wgs84")` computes the ellipsoid's areas, 0.45 per cent
   smaller at the equator and 0.56 per cent larger at 60 degrees. FullTopo v1.1
   has no areas.
+
+
+## Overview and saved structures
+
+A D8 flow-direction grid fixes which cells must be done before which: a cell
+needs its upstream neighbours first, or, for some kernels, its downstream one.
+FlowTopo works that order out once, from the grid alone, and saves it.
+Anything that walks the network in drainage order (upstream drainage area,
+flow length, Strahler stream order, or the upstream-to-downstream step of a
+routing scheme)
+then reads the saved order instead of working it out again.
+
+This repository holds the package and one example basin. The structures for
+the whole 90 m MERIT Hydro network are
+[FullTopo v1.1](https://fullhydro.org/downloads/merit-hydro-v1.0.1-90m/fullbasin/fulltopo/v1.1/);
+see [Global products](#global-products). A ten-minute narrated video shows the
+structures and the three ways of moving a value to its receiver:
+<https://youtu.be/tE5K2wM3TTY>.
+
+Documentation, the global MERIT Hydro products and the other FullHydro tools:
+<https://fullhydro.org/tools/flowtopo/>
+
+Author: Lulu Jiang (<https://lulujiang.me>)
+
+
+## Installation details
+
+```sh
+git clone https://github.com/hellolulujiang/flowtopo.git
+cd flowtopo
+pip install -e .            # numpy, rasterio, scipy, pymetis: structures, serial kernels, partitions
+pip install -e ".[speed]"   # adds numba: the threaded kernels need it
+```
+
+Python 3.10 or newer. Without numba the structures and the serial kernels
+still run, in pure Python; a function of `flowtopo.parallel` raises an error.
+
+
+## Additional kernel examples
+
+```python
+import flowtopo
+
+topo = flowtopo.FlowTopo.from_raster("data/dir_example.tif")
+
+upa = topo.upstream_area(ordering="dfs")           # km², one serial pass
+ldn = topo.distance_to_outlet(ordering="dfs")      # flow length downstream, m
+strord = topo.strahler_order(                      # on cells draining ≥ 10 km²
+    ordering="dfs", channel_mask=topo.channel_mask(upa, 10.0))
+
+upa_grid = topo.to_2d(upa)                         # back on the raster grid
+```
+
+Three of the kernels also run on threads, a layer at a time (needs numba);
+Strahler stream order runs serially only:
+
+```python
+from flowtopo import parallel
+upa = parallel.upstream_area(topo, layering="cfds", manner="push")   # push is safe only under cfds
+```
+
+
+## Example data
+
+`data/dir_example.tif` is the example basin of the paper: 292 rows by 614
+columns at 3 arc-seconds, 93,432 valid cells, 731 km² on the sphere FlowTopo uses by default (729 km² on the WGS84
+ellipsoid), cut from
+[MERIT Hydro](https://doi.org/10.1029/2019WR024873) (Yamazaki et al., 2019)
+and kept under its own terms, CC BY-NC 4.0 or ODbL 1.0 ([`DATA_NOTICE.md`](../DATA_NOTICE.md)).
+The GeoJSON files are the basin boundary and the outlet.
+
+Any D8 GeoTIFF in the MERIT Hydro convention works; see the [user guide](../docs/user-guide.md#your-own-grid).
+
+
+## Product contents
+
+[FullTopo v1.1](https://fullhydro.org/downloads/merit-hydro-v1.0.1-90m/fullbasin/fulltopo/v1.1/)
+holds eight structures on the 90 regions of FullDivide v1.1: `seq_dfs`,
+`lyr_cfds`, `lyr_alap` and `part_subbasin`, with its table, for every region;
+region 43 (southern China) also has `seq_bfs`, `seq_topo`, `lyr_asap` and
+`part_basin`.
+
+See the [user guide](../docs/user-guide.md#global-products) for the structures
+and their use with the MERIT Hydro grid.
+
+
+## Tests
+
+```sh
+pytest                  # needs pytest; numba for the threaded tests
+python example.py       # every structure, kernel and manner on the example basin; ends PASS or FAIL
+python benchmark.py     # serial vs threaded on synthetic grids
+```
+
+
+## Paper and code citation
+
+Cite this repository with the release you used and, once it appears, the
+paper: *MERIT-FlowTopo v1.0: a reusable computational
+foundation for hyperresolution hydrology on the global 90 m drainage network*
+(Jiang et al., submitted to Geoscientific Model Development). Cite downloaded
+products by version. The paper describes version 1.0, archived with its
+code at [10.5281/zenodo.22227621](https://doi.org/10.5281/zenodo.22227621).
+
+
+## Structure overview
+
+Eight structures, grouped by the question each one answers, and three ways
+to pass a value from a cell to its receiver. All are built from the D8 grid.
+The six orderings and layerings run on the bundled example basin, the three
+manners on a small grid of two basins; click one for the
+full-size MP4, or see all nine on the
+[animation page](https://hellolulujiang.github.io/flowtopo/).
+
+
+## Serial ordering details
+
+*Three serial orderings. One pass over any of them computes a kernel. They differ in memory access, and so in speed.*
+
+
+## Spatial partition details
+
+*Two spatial partitions, one subregion per processor. Both cut along the drainage hierarchy, so no value crosses a boundary while a kernel runs.*
+
+
+## Data acknowledgement
+
+The flat downstream-pointer representation, the D8 decoding conventions, the
+donor-count array, the chain-tracing rank and the breadth-first sequence
+builder follow [pyflwdir](https://github.com/Deltares/pyflwdir) (D. Eilander,
+Deltares; MIT licence;
+[10.5281/zenodo.4287337](https://doi.org/10.5281/zenodo.4287337)). No pyflwdir
+source is included; the code was written against those conventions, and
+`FlowTopo.from_d8` takes the same array `pyflwdir.from_array(d8, ftype="d8")`
+takes. The borrowed and the original parts are set out in
+[`docs/methods.md`](../docs/methods.md).
