@@ -322,6 +322,24 @@ problem. Over one 90 m cell the two agree far below the resolution of the data.
 The latitude at which they are evaluated is the one between the two cell
 centres.
 
+### `core.dfs_interval`, `raster.dfs_interval_geotiff`
+
+The depth-first interval of every cell from its position in the `u2d`
+depth-first sequence and its upstream cell count: `dfs_in = n - 1 - seq_dfs`,
+the position in the `d2u` sequence, and `dfs_out = dfs_in + upg - 1`. A
+depth-first traversal finishes a cell's upstream cells before it leaves them,
+so they take exactly the positions `dfs_in` to `dfs_out`, and cell `q` drains
+through cell `p` exactly when `dfs_in[p] <= dfs_in[q] <= dfs_out[p]`. A cell
+with `upg` below 1 or an interval past `n - 1` is refused: the two inputs do
+not belong together. The GeoTIFF form reads and writes one region, a strip of
+rows at a time; given a larger `upg`, it reads the window under `seq_dfs`,
+across the antimeridian when `upg` spans 360 degrees.
+
+*Origin:* the ancestor test of a tree numbered in depth-first pre-order.
+*Complexity:* O(N) time. Beyond its output, the array form holds 2^24 cells
+at a time, after copying an input that is not stored in row order; the
+GeoTIFF form holds one strip of rows.
+
 ### `raster`
 
 `read_geotiff` and `write_geotiff`, through rasterio. `GridHeader` carries the

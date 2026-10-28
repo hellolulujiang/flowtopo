@@ -553,6 +553,42 @@ Three things to know when a result here is compared with a downloaded layer:
   smaller at the equator and 0.56 per cent larger at 60 degrees. FullTopo v1.1
   has no areas.
 
+#### The upstream interval of every cell: `dfs_in` and `dfs_out`
+
+A depth-first sequence visits a cell and then all its upstream cells before any
+other cell, so the upstream cells of every cell take one run of consecutive
+positions. That run follows from a released `seq_dfs` raster and MERIT Hydro's
+`upg` (the number of cells draining through each cell, itself included):
+
+```python
+import flowtopo
+
+# upg_region.tif: MERIT Hydro's upg cut to the region's window
+n = flowtopo.dfs_interval_geotiff("seq_dfs_region.tif", "upg_region.tif",
+                                  "dfs_in_region.tif", "dfs_out_region.tif")
+```
+
+* `dfs_in = n - 1 - seq_dfs`, the cell's position in the same sequence read
+  downstream to upstream (position 0 is a pit), `n` being the number of cells
+  in the region;
+* `dfs_out = dfs_in + upg - 1`, the last position of its upstream cells;
+* cell `q` drains through cell `p` exactly when
+  `dfs_in[p] <= dfs_in[q] <= dfs_out[p]`, and `dfs_out - dfs_in + 1` is `upg`.
+
+One region is read and written. `seq_dfs` must be a whole region, and `upg`
+is cut to the same window, which the find page above gives. A larger `upg`
+that covers the region, such as MERIT Hydro's tiles joined in a VRT
+(`gdalbuildvrt upg.vrt *_upg.tif`), is read as well: the window under the
+region is taken from it, across the antimeridian for the regions that cross
+it. The two rasters need the same cell size and cell edges that coincide.
+The rasters are read
+512 rows at a time; a region of 33 600 × 40 800 cells takes under two
+minutes. The outputs are tiled GeoTIFFs on the region's grid, in the type of
+`seq_dfs`, `-1` off the network, and an existing file is not written over.
+`flowtopo.dfs_interval(seq_dfs, upg)` does the same on arrays. The C code
+archived at [10.5281/zenodo.22227620](https://doi.org/10.5281/zenodo.22227620)
+has the same tool, `dfs_interval/`, and gives the same files.
+
 
 ## Overview and saved structures
 

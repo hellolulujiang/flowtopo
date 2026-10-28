@@ -37,6 +37,7 @@ from .core import (
     LAYER_NODATA,
     basin_labels,
     d8_to_downstream,
+    dfs_interval,
     unknown_codes,
     layering_alap,
     layering_asap,
@@ -58,9 +59,9 @@ from .kernels import (
 from .layering import Decomposition, reverse_layers
 from .locality import parallel_locality, serial_locality
 from .partition import MAINSTEM, partition
-from .raster import GridHeader, read_geotiff, write_geotiff
+from .raster import GridHeader, dfs_interval_geotiff, read_geotiff, write_geotiff
 
-__version__ = "1.1.1"
+__version__ = "1.1.2"
 
 __all__ = [
     "FlowTopo",
@@ -75,6 +76,8 @@ __all__ = [
     "__version__",
     "basin_labels",
     "d8_to_downstream",
+    "dfs_interval",
+    "dfs_interval_geotiff",
     "unknown_codes",
     "distance_to_outlet",
     "layering_alap",

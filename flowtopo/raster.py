@@ -1,8 +1,11 @@
 """GeoTIFF I/O for D8 grids and kernel results, through rasterio."""
 
+import operator
 import os
 
 import numpy as np
+
+from .core import dfs_interval
 
 
 class GridHeader:
@@ -121,3 +124,139 @@ def write_geotiff(path, data, header):
         compress="deflate",
     ) as dst:
         dst.write(grid, 1)
+
+
+def _read_columns(src, row, nrow, col0, ncol):
+    """Rows ``row`` to ``row + nrow - 1`` and ``ncol`` columns from ``col0`` on, the columns taken
+    modulo the raster's width (the raster spans 360 degrees of longitude)."""
+    from rasterio.windows import Window
+
+    first = min(ncol, src.width - col0)
+    data = src.read(1, window=Window(col0, row, first, nrow))
+    if first < ncol:
+        rest = src.read(1, window=Window(0, row, ncol - first, nrow))
+        data = np.concatenate([data, rest], axis=1)
+    return data
+
+
+def _remove(paths):
+    for path in paths:
+        try:
+            os.remove(path)
+        except OSError:
+            pass
+
+
+def _place(parts, paths):
+    """Rename the two finished files ``parts`` to ``paths``, both or neither."""
+    # the target is looked at before each rename, which would write over it: an output
+    # spelled otherwise may be the other output or the other's temporary file
+    for path in paths:
+        if os.path.lexists(path):
+            raise FileExistsError(f"{path} appeared while the outputs were written")
+    os.replace(parts[0], paths[0])
+    try:
+        if os.path.lexists(paths[1]):
+            raise FileExistsError(f"{paths[0]} and {paths[1]} are the same file")
+        os.replace(parts[1], paths[1])
+    except BaseException:
+        os.replace(paths[0], parts[0])
+        raise
+
+
+def dfs_interval_geotiff(seq_dfs_path, upg_path, dfs_in_path, dfs_out_path, rows=512):
+    """Write the ``dfs_in`` and ``dfs_out`` rasters of a ``seq_dfs`` raster, the
+    upstream cell counts read from ``upg_path`` (see :func:`flowtopo.core.dfs_interval`).
+
+    One region is read and written: ``seq_dfs_path`` is a region of FullTopo v1.1,
+    which must hold a whole sequence, and ``upg_path`` is MERIT Hydro's ``upg``
+    cut to the same window.  A larger ``upg``, such as MERIT Hydro's ``upg`` tiles
+    joined in a VRT (``gdalbuildvrt upg.vrt *_upg.tif``), is read as well: the
+    window under ``seq_dfs`` is taken from it, across the antimeridian when it
+    spans 360 degrees of longitude.  The two need the same cell size and cell
+    edges that coincide.
+
+    The rasters are read and written ``rows`` rows at a time, so a region is never
+    held whole in memory; most of the memory used is GDAL's block cache, which
+    ``GDAL_CACHEMAX`` limits.  Each output is a tiled GeoTIFF
+    (512 x 512, ZSTD) on the grid of ``seq_dfs``, in its type, nodata ``-1``.
+    The two are written as ``dfs_in_path + ".part"`` and ``dfs_out_path + ".part"``
+    and renamed when both are complete; a run that fails removes them and leaves
+    neither output, and a run killed before it ends can leave some of these files,
+    to be removed before the next run.  A file or a link already at any of these
+    four paths is not written over.  Two runs writing the same outputs at the same
+    time are not kept apart.  Returns ``n``, the number of cells in the sequence.
+    """
+    rows = operator.index(rows)
+    if rows < 1:
+        raise ValueError(f"rows must be at least 1, not {rows}")
+    paths = (dfs_in_path, dfs_out_path)
+    parts = (f"{dfs_in_path}.part", f"{dfs_out_path}.part")
+    if os.path.abspath(dfs_in_path) == os.path.abspath(dfs_out_path):
+        raise ValueError(f"dfs_in and dfs_out are both {dfs_in_path}")
+    for path in paths + parts:
+        if os.path.lexists(path):
+            raise FileExistsError(f"{path} exists and is not written over: move it away or give another name")
+    rasterio = _rasterio()
+
+    with rasterio.open(seq_dfs_path) as seq_src, rasterio.open(upg_path) as upg_src:
+        st, ut = seq_src.transform, upg_src.transform
+        if st.b or st.d or ut.b or ut.d:
+            raise ValueError("seq_dfs and upg must be north-up grids")
+        if not (np.isclose(st.a, ut.a, rtol=1e-9, atol=0) and np.isclose(st.e, ut.e, rtol=1e-9, atol=0)):
+            raise ValueError(f"cell sizes differ: seq_dfs {st.a!r} x {st.e!r}, upg {ut.a!r} x {ut.e!r}")
+        if seq_src.crs and upg_src.crs and seq_src.crs != upg_src.crs:
+            raise ValueError(f"seq_dfs is in {seq_src.crs} and upg in {upg_src.crs}")
+        col_at = (st.c - ut.c) / ut.a
+        row_at = (st.f - ut.f) / ut.e
+        col0, row0 = round(col_at), round(row_at)
+        if abs(col_at - col0) > 1e-6 or abs(row_at - row0) > 1e-6:
+            raise ValueError(
+                f"the cell edges of seq_dfs fall {col_at:.6f} columns and {row_at:.6f} rows into upg, "
+                f"not on whole cells"
+            )
+        ncol, nrow = seq_src.width, seq_src.height
+        # a raster as wide as the globe continues past its east edge at its west edge
+        wraps = abs(upg_src.width * abs(ut.a) - 360.0) < 0.5 * abs(ut.a)
+        if wraps:
+            col0 %= upg_src.width
+        if row0 < 0 or row0 + nrow > upg_src.height or (
+                not wraps and (col0 < 0 or col0 + ncol > upg_src.width)):
+            raise ValueError("upg does not cover seq_dfs")
+
+        # first pass: the number of cells in the sequence
+        top, count = -1, 0
+        for row in range(0, nrow, rows):
+            seq = seq_src.read(1, window=((row, min(row + rows, nrow)), (0, ncol)))
+            on = seq >= 0
+            if on.any():
+                top = max(top, int(seq.max()))
+                count += int(np.count_nonzero(on))
+        if count != top + 1:
+            raise ValueError(
+                f"{seq_dfs_path} holds {count} cells of the network and positions up to {top}: "
+                f"it is not a whole sequence"
+            )
+        n = top + 1
+
+        profile = dict(
+            driver="GTiff", width=ncol, height=nrow, count=1, dtype=seq_src.dtypes[0],
+            nodata=-1, transform=st, crs=seq_src.crs, tiled=True, blockxsize=512,
+            blockysize=512, compress="zstd", predictor=2, BIGTIFF="IF_SAFER",
+        )
+        try:
+            with rasterio.open(parts[0], "w", **profile) as in_dst, \
+                    rasterio.open(parts[1], "w", **profile) as out_dst:
+                for row in range(0, nrow, rows):
+                    height = min(rows, nrow - row)
+                    window = ((row, row + height), (0, ncol))
+                    seq = seq_src.read(1, window=window)
+                    upg = _read_columns(upg_src, row0 + row, height, col0, ncol)
+                    first, last = dfs_interval(seq, upg, n)
+                    in_dst.write(first, 1, window=window)
+                    out_dst.write(last, 1, window=window)
+            _place(parts, paths)
+        except BaseException:
+            _remove(parts)          # the temporary files, which were not there before
+            raise
+    return n

@@ -665,6 +665,89 @@ def basin_labels(idxs_ds, seq_d2u=None):
 
 
 # ---------------------------------------------------------------------------
+# Depth-first intervals
+# ---------------------------------------------------------------------------
+
+_INTERVAL_CHUNK = 1 << 24
+
+
+def dfs_interval(seq_dfs, upg, n=None):
+    """``(dfs_in, dfs_out)``: the depth-first interval of every cell, from its
+    position in the depth-first sequence and its upstream cell count.
+
+    ``seq_dfs`` holds at every cell its position in the upstream-to-downstream
+    depth-first sequence, ``-1`` off the network: the ``seq_dfs`` layer of
+    FullTopo v1.1, or the inverse of ``topo.ordering("dfs", "u2d")``.
+    ``upg`` holds at every cell the number of cells that drain through it, the
+    cell itself included: MERIT Hydro's ``upg`` layer on the same cells.
+    ``n`` is the number of cells in the sequence; by default
+    ``max(seq_dfs) + 1``, so either pass the whole sequence or give ``n``.
+
+    ``dfs_in`` is the cell's position in the same traversal read downstream to
+    upstream (position 0 is a pit), ``n - 1 - seq_dfs``.  A depth-first
+    traversal visits a cell and then all its upstream cells before any other
+    cell, so these take the ``upg`` positions from ``dfs_in`` on and
+    ``dfs_out = dfs_in + upg - 1`` is the last of them.  Cell ``q`` drains
+    through cell ``p`` exactly when ``dfs_in[p] <= dfs_in[q] <= dfs_out[p]``,
+    and ``dfs_out - dfs_in + 1`` is the upstream cell count.
+
+    Both come back in the type and shape of ``seq_dfs``, ``-1`` off the
+    network.  A network cell with ``upg`` below 1, or whose interval runs past
+    ``n - 1``, raises a ``ValueError``: the two rasters do not belong together
+    (another grid, or a window shifted by some cells).
+    """
+    seq = np.asarray(seq_dfs)
+    up = np.asarray(upg)
+    if seq.dtype.kind != "i":
+        raise ValueError("seq_dfs must be signed integers, -1 off the network")
+    if up.dtype.kind not in "iu":
+        raise ValueError("upg must be integer cell counts")
+    if up.shape != seq.shape:
+        raise ValueError(f"upg has shape {up.shape} and seq_dfs {seq.shape}")
+    flat_seq = seq.reshape(-1)
+    flat_up = up.reshape(-1)
+    if n is None:
+        top, count = -1, 0
+        for start in range(0, flat_seq.size, _INTERVAL_CHUNK):
+            part = flat_seq[start:start + _INTERVAL_CHUNK]
+            top = max(top, int(part.max()))
+            count += int(np.count_nonzero(part >= 0))
+        if count != top + 1:
+            raise ValueError(
+                f"seq_dfs holds {count} cells of the network and positions up to {top}: "
+                f"it is not a whole sequence, so give n"
+            )
+        n = top + 1
+    n = int(n)
+    if n - 1 > np.iinfo(seq.dtype).max:
+        raise ValueError(f"n = {n} does not fit in {seq.dtype.name}")
+
+    dfs_in = np.full(flat_seq.shape, -1, dtype=seq.dtype)
+    dfs_out = np.full(flat_seq.shape, -1, dtype=seq.dtype)
+    # in chunks, so the int64 temporaries stay small on a region of two billion cells
+    for start in range(0, flat_seq.size, _INTERVAL_CHUNK):
+        part = slice(start, start + _INTERVAL_CHUNK)
+        on = flat_seq[part] >= 0
+        if not on.any():
+            continue
+        pos = flat_seq[part][on].astype(np.int64)
+        count = flat_up[part][on].astype(np.int64)
+        if int(pos.max()) > n - 1:
+            raise ValueError(f"seq_dfs holds a position past n - 1 = {n - 1}")
+        first = n - 1 - pos
+        # compared before the sum, which a huge upg would overflow
+        bad = (count < 1) | (count > n - first)
+        if bad.any():
+            raise ValueError(
+                f"{int(bad.sum())} cells of the network have upg below 1 or an interval past "
+                f"n - 1: seq_dfs and upg do not belong together"
+            )
+        dfs_in[part][on] = first
+        dfs_out[part][on] = first + count - 1
+    return dfs_in.reshape(seq.shape), dfs_out.reshape(seq.shape)
+
+
+# ---------------------------------------------------------------------------
 # Layerings
 # ---------------------------------------------------------------------------
 
