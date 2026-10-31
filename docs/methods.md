@@ -324,21 +324,38 @@ centres.
 
 ### `core.dfs_interval`, `raster.dfs_interval_geotiff`
 
-The depth-first interval of every cell from its position in the `u2d`
-depth-first sequence and its upstream cell count: `dfs_in = n - 1 - seq_dfs`,
-the position in the `d2u` sequence, and `dfs_out = dfs_in + upg - 1`. A
+The depth-first interval of every cell, numbered within its basin, from its
+position in the `u2d` depth-first sequence, its upstream cell count and the
+outlets of the basins. The traversal finishes one basin before it starts the
+next, so basin `k` takes the positions `a_k` to `b_k`: `b_k` is `seq_dfs` at
+its outlet and `a_k = b_k - upg + 1`, `upg` at the outlet. Sorted by `b`, the
+blocks must run from 0 to `n - 1` one after another (`a_k = b_(k-1) + 1`); a
+missing outlet, or a cell given as an outlet that is not one, breaks this and
+is refused. A cell's basin is the block holding its position, found by binary
+search on the `b_k`, and `dfs_in = a + b - seq_dfs`, the position read
+downstream to upstream within the block, and `dfs_out = dfs_in + upg - 1`. A
 depth-first traversal finishes a cell's upstream cells before it leaves them,
 so they take exactly the positions `dfs_in` to `dfs_out`, and cell `q` drains
-through cell `p` exactly when `dfs_in[p] <= dfs_in[q] <= dfs_out[p]`. A cell
-with `upg` below 1 or an interval past `n - 1` is refused: the two inputs do
-not belong together. The GeoTIFF form reads and writes one region, a strip of
-rows at a time; given a larger `upg`, it reads the window under `seq_dfs`,
-across the antimeridian when `upg` spans 360 degrees.
+through cell `p` exactly when `dfs_in[p] <= dfs_in[q] <= dfs_out[p]`. The
+whole sequence read backward, `n - 1 - seq_dfs` (the `d2u` sequence), differs
+from `dfs_in` by `a + b - (n - 1)`, a constant within each basin, and gives the
+same intervals relative to each other. A cell with `upg` below 1 or more
+upstream cells than its basin holds before it is refused: the inputs do not
+belong together. So is a position held by two cells: the `n` cells lie in 0 to
+`n - 1`, so a position held twice leaves another empty, which one bit for each
+position finds. These checks cannot prove that `seq_dfs` is a depth-first
+order of the flow network, which needs the flow directions: `seq_dfs` and
+`upg` must come from the same flow network. The GeoTIFF form reads and writes one region, a strip of rows
+at a time, reading `seq_dfs` once first for the outlets' positions; the
+outlets come from the region's basin table, whose `basin_cell_count` is
+checked against `upg` at each outlet. Given a larger `upg`, it reads the
+window under `seq_dfs`, across the antimeridian when `upg` spans 360 degrees.
 
 *Origin:* the ancestor test of a tree numbered in depth-first pre-order.
-*Complexity:* O(N) time. Beyond its output, the array form holds 2^24 cells
-at a time, after copying an input that is not stored in row order; the
-GeoTIFF form holds one strip of rows.
+*Complexity:* O(N log B) time for N cells in B basins. Beyond its output, the
+blocks of the B basins and one bit for each cell, the array form holds 2^24
+cells at a time, after copying an input that is not stored in row order; the
+GeoTIFF form holds one strip of rows and one bit for each cell.
 
 ### `raster`
 

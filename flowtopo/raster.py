@@ -2,10 +2,11 @@
 
 import operator
 import os
+import re
 
 import numpy as np
 
-from .core import dfs_interval
+from .core import _basin_blocks, _first_missing, _intervals, _new_seen
 
 
 class GridHeader:
@@ -136,6 +137,9 @@ def _read_columns(src, row, nrow, col0, ncol):
     if first < ncol:
         rest = src.read(1, window=Window(0, row, ncol - first, nrow))
         data = np.concatenate([data, rest], axis=1)
+    if data.dtype == np.uint64:
+        # as GDAL reads it into int64, as the C tool does: values past int64 at its largest
+        data = np.minimum(data, np.uint64(np.iinfo(np.int64).max)).astype(np.int64)
     return data
 
 
@@ -164,9 +168,93 @@ def _place(parts, paths):
         raise
 
 
-def dfs_interval_geotiff(seq_dfs_path, upg_path, dfs_in_path, dfs_out_path, rows=512):
-    """Write the ``dfs_in`` and ``dfs_out`` rasters of a ``seq_dfs`` raster, the
-    upstream cell counts read from ``upg_path`` (see :func:`flowtopo.core.dfs_interval`).
+_OUTLET_COLUMNS = ("local_outlet_row", "local_outlet_col", "basin_cell_count")
+_INTEGER = re.compile(rb"[+-]?[0-9]+")
+
+
+def _integer(field):
+    """The value of ``field`` (bytes) if it is a plain integer within int64, else ``None``."""
+    if not _INTEGER.fullmatch(field):
+        return None
+    digits = field.lstrip(b"+-").lstrip(b"0")
+    if len(digits) > 19:  # past int64; any number of leading zeros is read, as in C
+        return None
+    v = int(digits or b"0")
+    v = -v if field.startswith(b"-") else v
+    return v if -(1 << 63) <= v < 1 << 63 else None
+
+
+def _table_lines(table):
+    """The lines of a binary file, without their line ends."""
+    for line in table:
+        if line.endswith(b"\n"):
+            line = line[:-1]
+        if line.endswith(b"\r"):
+            line = line[:-1]
+        yield line
+
+
+def _read_outlets(outlets, nrow, ncol):
+    """``(rows, cols, counts)`` of the outlets as int64, ``counts`` ``None`` when not given.
+
+    A basin table is read as the C tool reads it: fields are split at every comma,
+    and each field read is a plain integer, ASCII digits after an optional sign,
+    with no spaces or quotes; empty lines are skipped.
+    """
+    if isinstance(outlets, (str, os.PathLike)):
+        with open(outlets, "rb") as table:
+            lines = _table_lines(table)
+            header = next(lines, b"").split(b",")
+            for name in _OUTLET_COLUMNS:
+                if name.encode() not in header:
+                    raise ValueError(f"{outlets} has no column {name}")
+            at = [header.index(name.encode()) for name in _OUTLET_COLUMNS]
+            in_order = sorted(range(len(at)), key=at.__getitem__)
+            values = []
+            for number, line in enumerate(lines, start=2):
+                if not line:
+                    continue
+                fields = line.split(b",")
+                value = [0] * len(at)
+                for j in in_order:
+                    if at[j] >= len(fields):
+                        raise ValueError(f"line {number} of {outlets} has too few fields")
+                    v = _integer(fields[at[j]])
+                    if v is None:
+                        raise ValueError(f"line {number} of {outlets} has no integer {_OUTLET_COLUMNS[j]}")
+                    value[j] = v
+                if not (0 <= value[0] < nrow and 0 <= value[1] < ncol):
+                    raise ValueError(f"an outlet lies outside seq_dfs (line {number} of {outlets})")
+                values.append(value)
+        data = np.array(values, dtype=np.int64).reshape(-1, 3)
+        rows, cols, counts = data[:, 0], data[:, 1], data[:, 2]
+    else:
+        try:
+            rows, cols = outlets
+        except (TypeError, ValueError):
+            raise ValueError(
+                "outlets must be the path of a basin table or a pair (rows, cols)"
+            ) from None
+        rows, cols = np.asarray(rows).reshape(-1), np.asarray(cols).reshape(-1)
+        if rows.size != cols.size:
+            raise ValueError("the rows and cols of outlets differ in length")
+        if rows.size and (rows.dtype.kind not in "iu" or cols.dtype.kind not in "iu"):
+            raise ValueError("outlets must be integer rows and columns")
+        rows, cols, counts = rows.astype(np.int64), cols.astype(np.int64), None
+    if rows.size and (int(rows.min()) < 0 or int(rows.max()) >= nrow
+                      or int(cols.min()) < 0 or int(cols.max()) >= ncol):
+        raise ValueError("an outlet lies outside seq_dfs")
+    return rows, cols, counts
+
+
+_SIGNED = ("int8", "int16", "int32", "int64")
+_UNSIGNED = ("uint8", "uint16", "uint32", "uint64")
+
+
+def dfs_interval_geotiff(seq_dfs_path, upg_path, dfs_in_path, dfs_out_path, outlets, rows=512):
+    """Write the ``dfs_in`` and ``dfs_out`` rasters of a ``seq_dfs`` raster, numbered
+    within each basin, the upstream cell counts read from ``upg_path`` (see
+    :func:`flowtopo.core.dfs_interval`).
 
     One region is read and written: ``seq_dfs_path`` is a region of FullTopo v1.1,
     which must hold a whole sequence, and ``upg_path`` is MERIT Hydro's ``upg``
@@ -176,9 +264,21 @@ def dfs_interval_geotiff(seq_dfs_path, upg_path, dfs_in_path, dfs_out_path, rows
     spans 360 degrees of longitude.  The two need the same cell size and cell
     edges that coincide.
 
+    ``outlets`` are the outlet cells of all the basins of the region, on the grid of
+    ``seq_dfs``: the path of the region's basin table of FullBasin v1.1
+    (``bat_region_<id>_90m.csv``), whose ``local_outlet_row``,
+    ``local_outlet_col`` and ``basin_cell_count`` columns are read, or a pair
+    ``(rows, cols)``.  ``seq_dfs`` at an outlet is the last position ``b`` of its
+    basin, and ``a = b - upg + 1`` the first; the basins must take positions 0 to
+    ``n - 1`` one after another, and no position may be held by two cells.
+    ``basin_cell_count`` is checked against ``upg`` at the outlet.  The table is
+    read as FullBasin writes it: fields split at every comma, and each field read a
+    plain integer, with no spaces or quotes.
+
     The rasters are read and written ``rows`` rows at a time, so a region is never
-    held whole in memory; most of the memory used is GDAL's block cache, which
-    ``GDAL_CACHEMAX`` limits.  Each output is a tiled GeoTIFF
+    held whole in memory: besides one bit for each cell of the sequence, which
+    shows that no position is held twice, most of the memory used is GDAL's block
+    cache, which ``GDAL_CACHEMAX`` limits.  Each output is a tiled GeoTIFF
     (512 x 512, ZSTD) on the grid of ``seq_dfs``, in its type, nodata ``-1``.
     The two are written as ``dfs_in_path + ".part"`` and ``dfs_out_path + ".part"``
     and renamed when both are complete; a run that fails removes them and leaves
@@ -200,6 +300,8 @@ def dfs_interval_geotiff(seq_dfs_path, upg_path, dfs_in_path, dfs_out_path, rows
     rasterio = _rasterio()
 
     with rasterio.open(seq_dfs_path) as seq_src, rasterio.open(upg_path) as upg_src:
+        if seq_src.dtypes[0] not in _SIGNED or upg_src.dtypes[0] not in _SIGNED + _UNSIGNED:
+            raise ValueError("seq_dfs must hold signed integers and upg integers")
         st, ut = seq_src.transform, upg_src.transform
         if st.b or st.d or ut.b or ut.d:
             raise ValueError("seq_dfs and upg must be north-up grids")
@@ -224,20 +326,41 @@ def dfs_interval_geotiff(seq_dfs_path, upg_path, dfs_in_path, dfs_out_path, rows
                 not wraps and (col0 < 0 or col0 + ncol > upg_src.width)):
             raise ValueError("upg does not cover seq_dfs")
 
-        # first pass: the number of cells in the sequence
+        out_row, out_col, out_count = _read_outlets(outlets, nrow, ncol)
+        by_row = np.lexsort((out_col, out_row))
+        out_row, out_col = out_row[by_row], out_col[by_row]
+        given = out_count is not None
+        if given:
+            out_count = out_count[by_row]
+        else:
+            out_count = np.zeros(out_row.size, dtype=np.int64)
+        out_last = np.full(out_row.size, -1, dtype=np.int64)
+
+        # first pass: the number of cells in the sequence, and seq_dfs (and upg, when the
+        # counts are not given) at the outlets
         top, count = -1, 0
         for row in range(0, nrow, rows):
-            seq = seq_src.read(1, window=((row, min(row + rows, nrow)), (0, ncol)))
+            height = min(rows, nrow - row)
+            seq = seq_src.read(1, window=((row, row + height), (0, ncol)))
             on = seq >= 0
             if on.any():
                 top = max(top, int(seq.max()))
                 count += int(np.count_nonzero(on))
+            here = slice(*np.searchsorted(out_row, (row, row + height)))
+            if here.start == here.stop:
+                continue
+            out_last[here] = seq[out_row[here] - row, out_col[here]]
+            if not given:
+                upg = _read_columns(upg_src, row0 + row, height, col0, ncol)
+                out_count[here] = upg[out_row[here] - row, out_col[here]]
         if count != top + 1:
             raise ValueError(
                 f"{seq_dfs_path} holds {count} cells of the network and positions up to {top}: "
                 f"it is not a whole sequence"
             )
         n = top + 1
+        first, last = _basin_blocks(out_last, out_count, n)
+        seen = _new_seen(n)
 
         profile = dict(
             driver="GTiff", width=ncol, height=nrow, count=1, dtype=seq_src.dtypes[0],
@@ -252,9 +375,26 @@ def dfs_interval_geotiff(seq_dfs_path, upg_path, dfs_in_path, dfs_out_path, rows
                     window = ((row, row + height), (0, ncol))
                     seq = seq_src.read(1, window=window)
                     upg = _read_columns(upg_src, row0 + row, height, col0, ncol)
-                    first, last = dfs_interval(seq, upg, n)
-                    in_dst.write(first, 1, window=window)
-                    out_dst.write(last, 1, window=window)
+                    here = slice(*np.searchsorted(out_row, (row, row + height)))
+                    if given and here.start != here.stop:
+                        at = upg[out_row[here] - row, out_col[here]].astype(np.int64)
+                        wrong = np.flatnonzero(at != out_count[here])
+                        if wrong.size:
+                            k = here.start + int(wrong[0])
+                            raise ValueError(
+                                f"an outlet has a basin_cell_count other than upg: row {int(out_row[k])}, "
+                                f"column {int(out_col[k])}, {int(out_count[k])} in the table, "
+                                f"{int(at[wrong[0]])} in upg"
+                            )
+                    start_in, end_in = _intervals(seq, upg, first, last, seen)
+                    in_dst.write(start_in, 1, window=window)
+                    out_dst.write(end_in, 1, window=window)
+            missing = _first_missing(seen, n)
+            if missing >= 0:
+                raise ValueError(
+                    f"{seq_dfs_path} has no cell at position {missing} and another position twice: "
+                    f"it is not a whole sequence"
+                )
             _place(parts, paths)
         except BaseException:
             _remove(parts)          # the temporary files, which were not there before

@@ -671,30 +671,162 @@ def basin_labels(idxs_ds, seq_d2u=None):
 _INTERVAL_CHUNK = 1 << 24
 
 
-def dfs_interval(seq_dfs, upg, n=None):
-    """``(dfs_in, dfs_out)``: the depth-first interval of every cell, from its
-    position in the depth-first sequence and its upstream cell count.
+def _basin_blocks(last, count, n):
+    """The blocks of the basins in the upstream-to-downstream depth-first sequence.
+
+    ``last`` holds the position of each basin's outlet in the sequence and ``count``
+    its upstream cell count, the number of cells in the basin.  A depth-first
+    traversal finishes one basin before it starts the next, so basin ``k`` takes
+    the positions ``first[k]`` to ``last[k]``, its outlet last, and the blocks
+    follow one another from 0 to ``n - 1``.  Returns ``(first, last)`` as int64,
+    sorted by position; outlets that do not make such blocks raise a ``ValueError``.
+    """
+    last = np.asarray(last, dtype=np.int64).reshape(-1)
+    count = np.asarray(count).reshape(-1)
+    if last.size == 0:
+        if n:
+            raise ValueError(f"no outlets are given for a sequence of {n} cells")
+        return last, last.copy()
+    if int(last.min()) < 0:
+        raise ValueError(
+            f"{int(np.count_nonzero(last < 0))} outlets are off the network (seq_dfs -1): "
+            f"seq_dfs and the outlets do not belong together"
+        )
+    # compared before the cast, which would wrap a huge unsigned upg
+    if int(count.min()) < 1 or int(count.max()) > n:
+        raise ValueError(
+            f"{int(np.count_nonzero((count < 1) | (count > n)))} outlets have upg below 1 or above "
+            f"{n}, the cells in the sequence: upg and the outlets do not belong together"
+        )
+    count = count.astype(np.int64)
+    order = np.argsort(last, kind="stable")
+    last, count = last[order], count[order]
+    if last.size > 1 and not (np.diff(last) > 0).all():
+        raise ValueError("an outlet is given twice")
+    first = last - count + 1
+    # each block starts one past the end of the one before it, from 0 to n - 1
+    gap = np.flatnonzero(first[1:] != last[:-1] + 1)
+    if first[0] != 0 or gap.size or last[-1] != n - 1:
+        where = (f"position {int(last[gap[0]]) + 1}" if gap.size
+                 else "position 0" if first[0] != 0 else f"position {n - 1}")
+        raise ValueError(
+            f"the {last.size} basins of these outlets do not take positions 0 to {n - 1} of seq_dfs "
+            f"one after another (first mismatch near {where}): the outlets are not all the "
+            f"outlets of this region, or seq_dfs, upg and the outlets do not belong together"
+        )
+    return first, last
+
+
+def _new_seen(n):
+    """One bit for each position of a sequence of ``n`` cells, all clear."""
+    return np.zeros((n + 7) >> 3, dtype=np.uint8)
+
+
+def _first_missing(seen, n):
+    """The first of the ``n`` positions whose bit is clear in ``seen``, or ``-1``."""
+    full = n >> 3
+    clear = np.flatnonzero(seen[:full] != 0xFF)
+    if clear.size:
+        k = int(clear[0])
+    elif n & 7 and int(seen[full]) != (1 << (n & 7)) - 1:
+        k = full
+    else:
+        return -1
+    free = ~int(seen[k]) & 0xFF
+    return 8 * k + (free & -free).bit_length() - 1
+
+
+def _intervals(seq, up, first, last, seen=None):
+    """``dfs_in`` and ``dfs_out`` of the cells ``seq`` and ``up`` (any shape), in the
+    basin blocks ``first`` and ``last`` of :func:`_basin_blocks`.  The position of
+    each cell is marked in ``seen`` (:func:`_new_seen`) when it is given."""
+    flat_seq = seq.reshape(-1)
+    flat_up = up.reshape(-1)
+    dfs_in = np.full(flat_seq.shape, -1, dtype=seq.dtype)
+    dfs_out = np.full(flat_seq.shape, -1, dtype=seq.dtype)
+    top = int(last[-1]) if last.size else -1
+    # in chunks, so the int64 temporaries stay small on a region of two billion cells
+    for start in range(0, flat_seq.size, _INTERVAL_CHUNK):
+        part = slice(start, start + _INTERVAL_CHUNK)
+        on = flat_seq[part] >= 0
+        if not on.any():
+            continue
+        pos = flat_seq[part][on].astype(np.int64)
+        count = flat_up[part][on].astype(np.int64)
+        if int(pos.max()) > top:
+            raise ValueError(f"seq_dfs holds a position past {top}, the last position of the outlets")
+        basin = np.searchsorted(last, pos, side="left")
+        lo, hi = first[basin], last[basin]
+        # the cell and its upstream cells take positions pos - count + 1 to pos, which must
+        # stay in the cell's basin; compared before any sum, which a huge upg would overflow
+        bad = (count < 1) | (count > pos - lo + 1)
+        if bad.any():
+            raise ValueError(
+                "some cells of the network have upg below 1 or more upstream cells than their "
+                "basin holds before them: seq_dfs, upg and the outlets do not belong together"
+            )
+        if seen is not None:
+            np.bitwise_or.at(seen, pos >> 3, np.left_shift(1, pos & 7).astype(np.uint8))
+        start_in = lo + hi - pos
+        dfs_in[part][on] = start_in
+        dfs_out[part][on] = start_in + count - 1
+    return dfs_in.reshape(seq.shape), dfs_out.reshape(seq.shape)
+
+
+def _sequence_length(flat_seq):
+    """``n``, the number of cells in a whole sequence; a sequence with gaps raises."""
+    top, count = -1, 0
+    for start in range(0, flat_seq.size, _INTERVAL_CHUNK):
+        part = flat_seq[start:start + _INTERVAL_CHUNK]
+        if part.size:
+            top = max(top, int(part.max()))
+            count += int(np.count_nonzero(part >= 0))
+    if count != top + 1:
+        raise ValueError(
+            f"seq_dfs holds {count} cells of the network and positions up to {top}: "
+            f"it is not the whole sequence of a region"
+        )
+    return top + 1
+
+
+def dfs_interval(seq_dfs, upg, outlets):
+    """``(dfs_in, dfs_out)``: the depth-first interval of every cell, numbered within
+    its basin, from its position in the depth-first sequence, its upstream cell
+    count and the outlets of the basins.
 
     ``seq_dfs`` holds at every cell its position in the upstream-to-downstream
-    depth-first sequence, ``-1`` off the network: the ``seq_dfs`` layer of
-    FullTopo v1.1, or the inverse of ``topo.ordering("dfs", "u2d")``.
-    ``upg`` holds at every cell the number of cells that drain through it, the
-    cell itself included: MERIT Hydro's ``upg`` layer on the same cells.
-    ``n`` is the number of cells in the sequence; by default
-    ``max(seq_dfs) + 1``, so either pass the whole sequence or give ``n``.
+    depth-first sequence of a whole region, ``-1`` off the network: the
+    ``seq_dfs`` layer of FullTopo v1.1, or the inverse of
+    ``topo.ordering("dfs", "u2d")``.  ``upg`` holds at every cell the number of
+    cells that drain through it, the cell itself included: MERIT Hydro's ``upg``
+    layer on the same cells.  ``outlets`` are the outlet cells of all the basins
+    of the region (the cells that drain into themselves, or out of the region):
+    flat indices into ``seq_dfs``, or a tuple of index arrays, one per axis, such
+    as ``(rows, cols)``.  For a FullBasin v1.1 region they are the
+    ``local_outlet_row`` and ``local_outlet_col`` columns of its basin table.
 
-    ``dfs_in`` is the cell's position in the same traversal read downstream to
-    upstream (position 0 is a pit), ``n - 1 - seq_dfs``.  A depth-first
-    traversal visits a cell and then all its upstream cells before any other
-    cell, so these take the ``upg`` positions from ``dfs_in`` on and
+    The traversal finishes one basin before it starts the next, so each basin
+    takes one block of positions, from ``a`` to ``b``: ``b`` is ``seq_dfs`` at the
+    outlet, and ``a = b - upg + 1`` with ``upg`` at the outlet.  ``dfs_in`` is a
+    cell's position in its basin's block read downstream to upstream,
+    ``dfs_in = a + b - seq_dfs``, so the outlet has ``dfs_in = a``.  A
+    depth-first traversal visits a cell and then all its upstream cells before
+    any other cell, so these take the ``upg`` positions from ``dfs_in`` on and
     ``dfs_out = dfs_in + upg - 1`` is the last of them.  Cell ``q`` drains
-    through cell ``p`` exactly when ``dfs_in[p] <= dfs_in[q] <= dfs_out[p]``,
-    and ``dfs_out - dfs_in + 1`` is the upstream cell count.
+    through cell ``p`` exactly when ``dfs_in[p] <= dfs_in[q] <= dfs_out[p]``, and
+    ``dfs_out - dfs_in + 1`` is the upstream cell count.  The whole sequence read
+    backward, ``n - 1 - seq_dfs`` (``topo.ordering("dfs", "d2u")``), differs from
+    ``dfs_in`` by a constant within each basin and gives the same upstream cells.
 
-    Both come back in the type and shape of ``seq_dfs``, ``-1`` off the
-    network.  A network cell with ``upg`` below 1, or whose interval runs past
-    ``n - 1``, raises a ``ValueError``: the two rasters do not belong together
-    (another grid, or a window shifted by some cells).
+    Both come back in the type and shape of ``seq_dfs``, ``-1`` off the network.
+    Inputs that do not belong together raise a ``ValueError``: blocks that do not
+    run from 0 to ``n - 1`` one after another (an outlet missing, or one that is
+    not an outlet), a network cell with ``upg`` below 1, or a cell with more
+    upstream cells than its basin holds before it (another grid, or a window
+    shifted by some cells), or two cells at the same position, which leaves
+    another position empty.  These checks cannot prove that ``seq_dfs`` is a
+    depth-first order of the flow network, which needs the flow directions:
+    ``seq_dfs`` and ``upg`` must come from the same flow network.
     """
     seq = np.asarray(seq_dfs)
     up = np.asarray(upg)
@@ -704,47 +836,35 @@ def dfs_interval(seq_dfs, upg, n=None):
         raise ValueError("upg must be integer cell counts")
     if up.shape != seq.shape:
         raise ValueError(f"upg has shape {up.shape} and seq_dfs {seq.shape}")
+    if isinstance(outlets, tuple):
+        if len(outlets) != seq.ndim:
+            raise ValueError(f"outlets has {len(outlets)} index arrays and seq_dfs {seq.ndim} axes")
+        index = tuple(np.asarray(axis).reshape(-1) for axis in outlets)
+        shape = seq.shape
+    else:
+        index = (np.asarray(outlets).reshape(-1),)
+        shape = (seq.size,)
+    for axis, size in zip(index, shape):
+        if axis.size and axis.dtype.kind not in "iu":
+            raise ValueError("outlets must be integer indices")
+        if axis.size and (int(axis.min()) < 0 or int(axis.max()) >= size):
+            raise ValueError("an outlet lies outside seq_dfs")
+    if len({axis.size for axis in index}) > 1:
+        raise ValueError("the index arrays of outlets differ in length")
+    index = tuple(axis.astype(np.intp) for axis in index)
+    flat = np.ravel_multi_index(index, shape) if len(index) > 1 else index[0]
     flat_seq = seq.reshape(-1)
-    flat_up = up.reshape(-1)
-    if n is None:
-        top, count = -1, 0
-        for start in range(0, flat_seq.size, _INTERVAL_CHUNK):
-            part = flat_seq[start:start + _INTERVAL_CHUNK]
-            top = max(top, int(part.max()))
-            count += int(np.count_nonzero(part >= 0))
-        if count != top + 1:
-            raise ValueError(
-                f"seq_dfs holds {count} cells of the network and positions up to {top}: "
-                f"it is not a whole sequence, so give n"
-            )
-        n = top + 1
-    n = int(n)
-    if n - 1 > np.iinfo(seq.dtype).max:
-        raise ValueError(f"n = {n} does not fit in {seq.dtype.name}")
-
-    dfs_in = np.full(flat_seq.shape, -1, dtype=seq.dtype)
-    dfs_out = np.full(flat_seq.shape, -1, dtype=seq.dtype)
-    # in chunks, so the int64 temporaries stay small on a region of two billion cells
-    for start in range(0, flat_seq.size, _INTERVAL_CHUNK):
-        part = slice(start, start + _INTERVAL_CHUNK)
-        on = flat_seq[part] >= 0
-        if not on.any():
-            continue
-        pos = flat_seq[part][on].astype(np.int64)
-        count = flat_up[part][on].astype(np.int64)
-        if int(pos.max()) > n - 1:
-            raise ValueError(f"seq_dfs holds a position past n - 1 = {n - 1}")
-        first = n - 1 - pos
-        # compared before the sum, which a huge upg would overflow
-        bad = (count < 1) | (count > n - first)
-        if bad.any():
-            raise ValueError(
-                f"{int(bad.sum())} cells of the network have upg below 1 or an interval past "
-                f"n - 1: seq_dfs and upg do not belong together"
-            )
-        dfs_in[part][on] = first
-        dfs_out[part][on] = first + count - 1
-    return dfs_in.reshape(seq.shape), dfs_out.reshape(seq.shape)
+    n = _sequence_length(flat_seq)
+    first, last = _basin_blocks(flat_seq[flat], up.reshape(-1)[flat], n)
+    seen = _new_seen(n)
+    dfs_in, dfs_out = _intervals(seq, up, first, last, seen)
+    missing = _first_missing(seen, n)
+    if missing >= 0:
+        raise ValueError(
+            f"seq_dfs has no cell at position {missing} and another position twice: "
+            f"it is not the whole sequence of a region"
+        )
+    return dfs_in, dfs_out
 
 
 # ---------------------------------------------------------------------------

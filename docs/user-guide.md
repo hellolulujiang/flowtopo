@@ -557,23 +557,43 @@ Three things to know when a result here is compared with a downloaded layer:
 
 A depth-first sequence visits a cell and then all its upstream cells before any
 other cell, so the upstream cells of every cell take one run of consecutive
-positions. That run follows from a released `seq_dfs` raster and MERIT Hydro's
-`upg` (the number of cells draining through each cell, itself included):
+positions. It also finishes one basin before it starts the next, so every basin
+takes one block of positions, from `a` to `b`, with its outlet at `b`. The run
+of every cell follows from a released `seq_dfs` raster, MERIT Hydro's `upg`
+(the number of cells draining through each cell, itself included) and the
+outlets of the region's basins, which the basin table of FullBasin v1.1 gives
+(`bat_region_<id>_90m.csv`, columns `local_outlet_row`, `local_outlet_col` and
+`basin_cell_count`):
 
 ```python
 import flowtopo
 
 # upg_region.tif: MERIT Hydro's upg cut to the region's window
 n = flowtopo.dfs_interval_geotiff("seq_dfs_region.tif", "upg_region.tif",
-                                  "dfs_in_region.tif", "dfs_out_region.tif")
+                                  "dfs_in_region.tif", "dfs_out_region.tif",
+                                  outlets="bat_region.csv")
 ```
 
-* `dfs_in = n - 1 - seq_dfs`, the cell's position in the same sequence read
-  downstream to upstream (position 0 is a pit), `n` being the number of cells
-  in the region;
+* `b` is `seq_dfs` at the basin's outlet and `a = b - upg + 1`, `upg` at the
+  outlet being the cells of the basin;
+* `dfs_in = a + b - seq_dfs`, the cell's position in its basin's block read
+  downstream to upstream, so the outlet has `dfs_in = a`;
 * `dfs_out = dfs_in + upg - 1`, the last position of its upstream cells;
 * cell `q` drains through cell `p` exactly when
   `dfs_in[p] <= dfs_in[q] <= dfs_out[p]`, and `dfs_out - dfs_in + 1` is `upg`.
+
+The whole region read backward, `n - 1 - seq_dfs` (`n` the number of cells in
+the region, and `topo.ordering("dfs", "d2u")` in this package), differs from
+`dfs_in` by a constant within each basin and gives the same upstream cells;
+`dfs_in` keeps the numbers of a basin in its own block, the block it has in
+`seq_dfs`. The basins must take positions 0 to `n - 1` one after another, no
+position may be held by two cells, and `basin_cell_count` must equal `upg` at
+each outlet; otherwise the inputs do not belong together and the run is
+refused. These checks cannot prove that `seq_dfs` is a depth-first order of
+the flow network, which needs the flow directions: `seq_dfs` and `upg` must
+come from the same flow network. The table is read as FullBasin writes it,
+fields split at every comma and each a plain integer, with no spaces or
+quotes.
 
 One region is read and written. `seq_dfs` must be a whole region, and `upg`
 is cut to the same window, which the find page above gives. A larger `upg`
@@ -581,11 +601,14 @@ that covers the region, such as MERIT Hydro's tiles joined in a VRT
 (`gdalbuildvrt upg.vrt *_upg.tif`), is read as well: the window under the
 region is taken from it, across the antimeridian for the regions that cross
 it. The two rasters need the same cell size and cell edges that coincide.
-The rasters are read
-512 rows at a time; a region of 33 600 × 40 800 cells takes under two
-minutes. The outputs are tiled GeoTIFFs on the region's grid, in the type of
-`seq_dfs`, `-1` off the network, and an existing file is not written over.
-`flowtopo.dfs_interval(seq_dfs, upg)` does the same on arrays. The C code
+`seq_dfs` must hold
+signed integers and `upg` integers. The rasters are read 512 rows at a time,
+and one bit is kept for each cell of the sequence; a region of
+33 600 × 40 800 cells takes about three minutes. The outputs are tiled
+GeoTIFFs on the region's grid, in the type of `seq_dfs`, `-1` off the network,
+and an existing file is not written over.
+`flowtopo.dfs_interval(seq_dfs, upg, outlets)` does the same on arrays, the
+outlets given as `(rows, cols)`. The C code
 archived at [10.5281/zenodo.22227620](https://doi.org/10.5281/zenodo.22227620)
 has the same tool, `dfs_interval/`, and gives the same files.
 
