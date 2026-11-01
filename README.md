@@ -77,7 +77,7 @@ The bundled MERIT Hydro basin has 93,432 valid cells. [Input requirements](docs/
 
 ## Citing
 
-Cite this repository with the release used and downloaded products by version. Paper: *MERIT-FlowTopo v1.0: a reusable computational foundation for hyperresolution hydrology on the global 90 m drainage network* (Jiang et al., submitted to *Geoscientific Model Development*). [Archived paper code](https://doi.org/10.5281/zenodo.22227621).
+Cite this repository with the release used and downloaded products by version. Code: FlowTopo code 1.1.3, [10.5281/zenodo.23732152](https://doi.org/10.5281/zenodo.23732152). Paper: *FlowTopo v1.0: a reusable computational foundation for hyperresolution hydrology on the global 90 m MERIT Hydro drainage network* (Jiang et al., submitted to *Geoscientific Model Development*); it describes version 1.0, archived with its code at [10.5281/zenodo.22227621](https://doi.org/10.5281/zenodo.22227621).
 
 ## Acknowledgements
 

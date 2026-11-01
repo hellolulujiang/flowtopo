@@ -709,11 +709,13 @@ python benchmark.py     # serial vs threaded on synthetic grids
 ## Paper and code citation
 
 Cite this repository with the release you used and, once it appears, the
-paper: *MERIT-FlowTopo v1.0: a reusable computational
-foundation for hyperresolution hydrology on the global 90 m drainage network*
+paper: *FlowTopo v1.0: a reusable computational foundation for
+hyperresolution hydrology on the global 90 m MERIT Hydro drainage network*
 (Jiang et al., submitted to Geoscientific Model Development). Cite downloaded
 products by version. The paper describes version 1.0, archived with its
 code at [10.5281/zenodo.22227621](https://doi.org/10.5281/zenodo.22227621).
+Release 1.1.3 is archived as FlowTopo code at
+[10.5281/zenodo.23732152](https://doi.org/10.5281/zenodo.23732152).
 
 
 ## Structure overview
