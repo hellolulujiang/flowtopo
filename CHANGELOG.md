@@ -47,8 +47,9 @@
   larger `upg` is read as well, across the antimeridian.
   `tests/test_dfs_interval.py` checks the intervals against the upstream cells of
   every cell.
-* The C code archived with this release (MERIT-FlowTopo code 1.1.0,
-  [10.5281/zenodo.22227620](https://doi.org/10.5281/zenodo.22227620)) has the same
+* The C code archived with this release (MERIT-FlowTopo code 1.1.0, in
+  [10.5281/zenodo.23732152](https://doi.org/10.5281/zenodo.23732152), a record that
+  now holds code 1.1.3) has the same
   tool, `dfs_interval/`, which gives the same files, and the two partitions,
   `partition/`, which give the same subregions as `FlowTopo.partition` on the
   same METIS.
