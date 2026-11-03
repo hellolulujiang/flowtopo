@@ -32,7 +32,7 @@
   a field that is not a plain integer, a position held by two cells and
   rasters that are not integers are refused; a table with CRLF line ends gives
   the same files.
-* The C tool `dfs_interval/` (MERIT-FlowTopo code 1.1.1) takes the basin table
+* The C tool `dfs_interval/` (FlowTopo code 1.1.3) takes the basin table
   and gives the same files.
 * Other results are unchanged.
 
